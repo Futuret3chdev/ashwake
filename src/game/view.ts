@@ -1,5 +1,9 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import type { Ent, Sim } from "@/game/sim";
 import { GROVE, LAKES, terrainHeight } from "@/game/world";
 
@@ -26,7 +30,13 @@ export class HuntView {
   private player: THREE.Group;
   private rigs = new Map<number, { mesh: THREE.Object3D; rig?: CityRig }>();
   private shotMeshes: THREE.Mesh[] = [];
-  private groundMat: THREE.ShaderMaterial;
+  private groundMat: THREE.MeshStandardMaterial;
+  private groundHeat = { value: 0.12 };
+  private composer: EffectComposer | null = null;
+  private wallMap!: THREE.CanvasTexture;
+  private glowMap!: THREE.CanvasTexture;
+  private plateMap!: THREE.CanvasTexture;
+  private treadMap!: THREE.CanvasTexture;
   private skyMat: THREE.ShaderMaterial;
   private waterMat: THREE.ShaderMaterial;
   private fog: THREE.FogExp2;
@@ -58,18 +68,31 @@ export class HuntView {
     this.renderer.setClearColor(0x0e1411, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.42;
+    this.renderer.toneMappingExposure = 1.28;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.paintSurfaces();
     this.camera = new THREE.PerspectiveCamera(48, 1, 0.4, 1600);
 
     this.fog = new THREE.FogExp2(0xc8bfa8, 0.0055);
     this.scene.fog = this.fog;
 
-    this.hemi = new THREE.HemisphereLight(0xd7ecff, 0x6a8a3a, 1.45);
+    this.hemi = new THREE.HemisphereLight(0xd7ecff, 0x6a8a3a, 0.72);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xfff0d0, 2.35);
-    this.sun.position.set(-90, 64, 36);
-    this.scene.add(this.sun);
-    const fill = new THREE.DirectionalLight(0x8ea4b8, 0.42);
+    this.sun = new THREE.DirectionalLight(0xfff0d0, 2.8);
+    this.sun.position.set(-40, 70, 28);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(1024, 1024);
+    this.sun.shadow.camera.near = 8;
+    this.sun.shadow.camera.far = 160;
+    this.sun.shadow.camera.left = -46;
+    this.sun.shadow.camera.right = 46;
+    this.sun.shadow.camera.top = 46;
+    this.sun.shadow.camera.bottom = -46;
+    this.sun.shadow.bias = -0.0006;
+    this.sun.shadow.normalBias = 0.04;
+    this.scene.add(this.sun, this.sun.target);
+    const fill = new THREE.DirectionalLight(0x8ea4b8, 0.55);
     fill.position.set(70, 30, -80);
     this.scene.add(fill);
 
@@ -108,47 +131,46 @@ export class HuntView {
     const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 16), this.skyMat);
     this.scene.add(sky);
 
-    this.groundMat = new THREE.ShaderMaterial({
-      uniforms: { uHeat: { value: 0.12 }, uTime: { value: 0 }, uSun: { value: new THREE.Vector3(-0.55, 0.42, 0.22).normalize() } },
-      vertexShader: `
-        ${TERRAIN}
-        varying vec3 vPos; varying vec3 vN; varying float vH;
-        void main(){
-          vec3 p = position;
-          float h = ashHeight(p.xz);
-          float e = 3.0;
-          float hx = ashHeight(p.xz + vec2(e, 0.0));
-          float hz = ashHeight(p.xz + vec2(0.0, e));
-          p.y += h;
-          vPos = p; vH = h;
-          vN = normalize(vec3(h - hx, e, h - hz));
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-        }`,
-      fragmentShader: `
-        uniform float uHeat; uniform float uTime; uniform vec3 uSun;
-        varying vec3 vPos; varying vec3 vN; varying float vH;
-        void main(){
-          float n = sin(vPos.x * 0.07) * sin(vPos.z * 0.06);
-          float patch = sin(vPos.x * 0.021 + 2.0) * cos(vPos.z * 0.018);
-          vec3 grass = vec3(0.45, 0.68, 0.24);
-          vec3 lawn = vec3(0.62, 0.74, 0.28);
-          vec3 dirt = vec3(0.62, 0.46, 0.26);
-          vec3 ash = vec3(0.42, 0.36, 0.30);
-          vec3 magma = vec3(0.55, 0.16, 0.06);
-          float heat = uHeat;
-          vec3 col = mix(grass, lawn, smoothstep(-0.2, 0.8, patch));
-          col = mix(col, dirt, smoothstep(4.0, 9.0, vH) * 0.55);
-          col = mix(col, ash, smoothstep(0.45, 0.8, heat));
-          col = mix(col, magma, smoothstep(0.75, 1.0, heat));
-          float lit = clamp(dot(normalize(vN), uSun), 0.0, 1.0);
-          col *= 0.62 + lit * 0.7;
-          col += vec3(0.02, 0.03, 0.01) * n * (1.0 - heat);
-          gl_FragColor = vec4(col, 1.0);
-        }`,
+    const grass = this.grassTex();
+    this.groundMat = new THREE.MeshStandardMaterial({
+      map: grass,
+      color: 0xffffff,
+      roughness: 0.94,
+      metalness: 0.02,
     });
+    this.groundMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uHeat = this.groundHeat;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+          float ashH(vec2 p){
+            return sin(p.x * 0.02) * 7.0 + cos(p.y * 0.016) * 5.0 + sin((p.x + p.y) * 0.007) * 4.5 + sin(p.x * 0.041 + p.y * 0.03) * 1.2;
+          }`,
+        )
+        .replace(
+          "#include <beginnormal_vertex>",
+          `#include <beginnormal_vertex>
+          float e = 3.0;
+          vec2 xz = vec2(position.x, position.z);
+          float h0 = ashH(xz);
+          objectNormal = normalize(vec3(h0 - ashH(xz + vec2(e, 0.0)), e, h0 - ashH(xz + vec2(0.0, e))));`,
+        )
+        .replace("#include <begin_vertex>", `#include <begin_vertex>\n transformed.y += ashH(vec2(position.x, position.z));`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\n uniform float uHeat;")
+        .replace(
+          "#include <color_fragment>",
+          `#include <color_fragment>
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.55, 0.46, 0.32), smoothstep(0.35, 0.7, uHeat));
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.16, 0.08), smoothstep(0.72, 1.0, uHeat));`,
+        );
+    };
     const groundGeo = new THREE.PlaneGeometry(1700, 1700, 140, 140);
     groundGeo.rotateX(-Math.PI / 2);
-    this.scene.add(new THREE.Mesh(groundGeo, this.groundMat));
+    const ground = new THREE.Mesh(groundGeo, this.groundMat);
+    ground.receiveShadow = true;
+    this.scene.add(ground);
 
     this.waterMat = new THREE.ShaderMaterial({
       transparent: true,
@@ -212,21 +234,28 @@ export class HuntView {
       this.shotMeshes.push(m);
       this.scene.add(m);
     }
+    const fine = typeof window !== "undefined" && !window.matchMedia("(pointer: coarse)").matches;
+    if (fine) {
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.18, 0.4, 0.88));
+      this.composer.addPass(new OutputPass());
+    }
   }
 
   resize(w: number, h: number, dpr: number) {
     if (this.disposed || w < 2 || h < 2) return;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setPixelRatio(Math.min(dpr, w < 900 ? 1.35 : 1.75));
+    this.renderer.setPixelRatio(Math.min(dpr, w < 900 ? 1.25 : 1.5));
     this.renderer.setSize(w, h, false);
+    this.composer?.setSize(w, h);
   }
 
   sync(sim: Sim, dt: number) {
     this.clock += dt;
     const heat = sim.heat / 100;
-    this.groundMat.uniforms.uHeat!.value = heat;
-    this.groundMat.uniforms.uTime!.value = this.clock;
+    this.groundHeat.value = heat;
     this.skyMat.uniforms.uHeat!.value = heat;
     this.skyMat.uniforms.uTime!.value = this.clock;
     this.waterMat.uniforms.uTime!.value = this.clock;
@@ -234,7 +263,7 @@ export class HuntView {
     this.fog.density = 0.0024 + heat * 0.008 + (sim.inStorm ? 0.014 : 0);
     this.hemi.color.setHex(heat < 0.55 ? 0xd8d2c4 : 0xc48a62);
     this.hemi.groundColor.setHex(heat < 0.55 ? 0x6a5340 : 0x3a2218);
-    this.sun.intensity = 1.5 - heat * 0.55;
+    this.sun.intensity = 2.5 - heat * 0.7;
     this.sun.color.setHex(heat < 0.6 ? 0xfff1d2 : 0xffb088);
     const stormMat = this.storm.material as THREE.MeshBasicMaterial;
     stormMat.opacity = sim.heat > 24 ? 0.08 + (sim.inStorm ? 0.16 : 0.05) : 0.02;
@@ -242,6 +271,8 @@ export class HuntView {
     this.paintTrees(heat);
 
     const py = terrainHeight(sim.x, sim.z);
+    this.sun.position.set(sim.x - 36, py + 62, sim.z + 22);
+    this.sun.target.position.set(sim.x, py, sim.z);
     const grown = 1 + Math.min(0.55, sim.cities * 0.08 + sim.rivalsDown * 0.06);
     this.player.position.set(sim.x, py, sim.z);
     this.player.rotation.y = sim.yaw;
@@ -320,7 +351,9 @@ export class HuntView {
   }
 
   render() {
-    if (!this.disposed) this.renderer.render(this.scene, this.camera);
+    if (this.disposed) return;
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 
   dispose() {
@@ -424,11 +457,18 @@ export class HuntView {
   private buildCity(kind: "player" | "prey" | "rival", id = 0) {
     const spec = this.specFor(kind, id);
     const g = new THREE.Group();
-    const iron = this.mat(spec.key + "-iron", spec.iron, { roughness: 0.58, metalness: 0.38 });
-    const plate = this.mat(spec.key + "-plate", spec.plate, { roughness: 0.5, metalness: 0.3 });
-    const bronze = this.mat(spec.key + "-bronze", spec.bronze, { roughness: 0.4, metalness: 0.58 });
-    const glow = this.mat(spec.key + "-glow", spec.glow, { emissive: spec.glow, emissiveIntensity: 0.9, roughness: 0.32 });
-    const track = this.mat(spec.key + "-track", 0x2c241f, { roughness: 0.78, metalness: 0.22 });
+    const iron = this.mat(spec.key + "-iron", spec.iron, { map: this.plateMap, roughness: 0.62, metalness: 0.48 });
+    const plate = this.mat(spec.key + "-plate", spec.plate, {
+      map: this.wallMap,
+      emissive: spec.glow,
+      emissiveMap: this.glowMap,
+      emissiveIntensity: 1.15,
+      roughness: 0.58,
+      metalness: 0.18,
+    });
+    const bronze = this.mat(spec.key + "-bronze", spec.bronze, { map: this.plateMap, roughness: 0.38, metalness: 0.62 });
+    const glow = this.mat(spec.key + "-glow", spec.glow, { emissive: spec.glow, emissiveIntensity: 1.1, roughness: 0.3 });
+    const track = this.mat(spec.key + "-track", 0x8a8074, { map: this.treadMap, roughness: 0.72, metalness: 0.28 });
     const cleatMat = this.mat(spec.key + "-cleat", 0x6a5648, { roughness: 0.66, metalness: 0.28 });
     const tooth = this.mat("ivory", 0xf4eee4, { roughness: 0.42, metalness: 0.06 });
     const ironP: THREE.BufferGeometry[] = [];
@@ -440,7 +480,7 @@ export class HuntView {
       geo.applyMatrix4(new THREE.Matrix4().makeTranslation(x, y, z));
       list.push(geo);
     };
-    const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+    const box = (w: number, h: number, d: number) => this.tile(new THREE.BoxGeometry(w, h, d), Math.max(1, w / 2.4), Math.max(1, h / 1.8));
 
     put(ironP, box(spec.beam, 1.65, spec.len), 0, 2.2, 0.15);
     put(ironP, box(spec.beam - 0.7, 0.42, spec.len - 1.8), 0, 3.22, 0.25);
@@ -450,10 +490,16 @@ export class HuntView {
 
     for (const t of spec.tiers) {
       put(plateP, box(t.w, t.h, t.d), 0, t.y + t.h / 2, t.z);
-      put(glowP, box(t.w * 0.78, 0.14, 0.07), 0, t.y + t.h * 0.38, t.z - t.d / 2 - 0.04);
-      put(glowP, box(t.w * 0.62, 0.1, 0.07), 0, t.y + t.h * 0.66, t.z - t.d / 2 - 0.04);
-      put(glowP, box(0.07, t.h * 0.42, t.d * 0.62), t.w / 2 + 0.04, t.y + t.h * 0.5, t.z);
-      put(glowP, box(0.07, t.h * 0.42, t.d * 0.62), -t.w / 2 - 0.04, t.y + t.h * 0.5, t.z);
+      const cols = Math.max(3, Math.round(t.w));
+      const rows = Math.max(2, Math.round(t.h));
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if ((c + r) % 4 === 0) continue;
+          const x = (c - (cols - 1) / 2) * ((t.w * 0.78) / cols);
+          const y = t.y + 0.4 + (r * (t.h - 0.7)) / rows;
+          put(glowP, new THREE.BoxGeometry(0.34, 0.48, 0.08), x, y, t.z - t.d / 2 - 0.05);
+        }
+      }
     }
 
     const deck = spec.tiers[0]!;
@@ -502,7 +548,10 @@ export class HuntView {
       const merged = mergeGeometries(parts, false);
       parts.forEach((p) => p.dispose());
       if (!merged) return;
-      g.add(new THREE.Mesh(merged, material));
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      g.add(mesh);
     };
     bake(ironP, iron);
     bake(plateP, plate);
@@ -587,33 +636,39 @@ export class HuntView {
 
   private dressTown(city: THREE.Group) {
     const district = new THREE.Group();
-    const wall = this.mat("town-wall", 0x8d735c, { roughness: 0.55, metalness: 0.28 });
-    const roof = this.mat("town-roof", 0xc4844a, { roughness: 0.48, metalness: 0.4 });
-    const glass = this.mat("town-glass", 0xffb15a, { emissive: 0xffb15a, emissiveIntensity: 0.85, roughness: 0.3 });
+    const wall = this.mat("town-wall", 0xd8c7a4, {
+      map: this.wallMap,
+      emissive: 0xffc27a,
+      emissiveMap: this.glowMap,
+      emissiveIntensity: 1.05,
+      roughness: 0.55,
+      metalness: 0.16,
+    });
     const street = new THREE.Mesh(
-      new THREE.RingGeometry(7.2, 9.4, 24),
-      new THREE.MeshStandardMaterial({ color: 0x6a5848, roughness: 0.9, metalness: 0.1 }),
+      new THREE.RingGeometry(7.4, 11.2, 28),
+      new THREE.MeshStandardMaterial({ color: 0x6a5848, roughness: 0.92, metalness: 0.08 }),
     );
     street.rotation.x = -Math.PI / 2;
-    street.position.y = 0.15;
+    street.position.y = 0.12;
+    street.receiveShadow = true;
     district.add(street);
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2;
-      const rad = i % 2 === 0 ? 10.4 : 12.6;
-      const h = 1.6 + (i % 4) * 0.85;
-      const w = 1.5 + (i % 3) * 0.35;
-      const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * 0.85), wall);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.2;
+      const rad = 9.2 + (i % 3) * 1.5;
+      const h = 3.2 + (i % 4) * 1.4;
+      const w = 2.4 + (i % 2) * 0.8;
+      const block = new THREE.Mesh(this.tile(new THREE.BoxGeometry(w, h, w * 0.72), w / 2.2, h / 1.8), wall);
       block.position.set(Math.cos(a) * rad, h / 2, Math.sin(a) * rad);
       block.rotation.y = -a;
+      block.castShadow = true;
+      block.receiveShadow = true;
       district.add(block);
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(w * 0.62, h * 0.45, 4), roof);
-      cap.position.set(block.position.x, h + h * 0.18, block.position.z);
-      cap.rotation.y = Math.PI / 4 - a;
-      district.add(cap);
-      const win = new THREE.Mesh(new THREE.BoxGeometry(w * 0.55, 0.14, 0.06), glass);
-      win.position.set(block.position.x, h * 0.55, block.position.z);
-      win.lookAt(0, h * 0.55, 0);
-      district.add(win);
+      if (i % 2 === 0) {
+        const upper = new THREE.Mesh(this.tile(new THREE.BoxGeometry(w * 0.62, h * 0.45, w * 0.48), 1, 1), wall);
+        upper.position.set(block.position.x, h + h * 0.22, block.position.z);
+        upper.castShadow = true;
+        district.add(upper);
+      }
     }
     city.add(district);
     city.userData.district = district;
@@ -697,6 +752,128 @@ export class HuntView {
     );
     m.rotation.x = -Math.PI / 2;
     return m;
+  }
+
+  private tile(geo: THREE.BufferGeometry, su: number, sv: number) {
+    const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+    return geo;
+  }
+
+  private paintSurfaces() {
+    const wall = document.createElement("canvas");
+    wall.width = 512;
+    wall.height = 512;
+    const glow = document.createElement("canvas");
+    glow.width = 512;
+    glow.height = 512;
+    const wg = wall.getContext("2d")!;
+    const gg = glow.getContext("2d")!;
+    wg.fillStyle = "#e4ddd2";
+    wg.fillRect(0, 0, 512, 512);
+    gg.fillStyle = "#000";
+    gg.fillRect(0, 0, 512, 512);
+    for (let y = 0; y < 512; y += 64) {
+      wg.fillStyle = "#8d867c";
+      wg.fillRect(0, y, 512, 4);
+      wg.fillStyle = "#f3efe8";
+      wg.fillRect(0, y + 4, 512, 2);
+    }
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) {
+        const x = 22 + col * 62;
+        const y = 16 + row * 64;
+        const lit = (col * 3 + row) % 5 !== 0;
+        wg.fillStyle = lit ? "#2c261f" : "#171410";
+        wg.fillRect(x, y, 26, 34);
+        if (lit) {
+          gg.fillStyle = (col + row) % 3 === 0 ? "#ffe1b0" : "#ffb15c";
+          gg.fillRect(x + 3, y + 3, 20, 28);
+        }
+      }
+    }
+    this.wallMap = new THREE.CanvasTexture(wall);
+    this.glowMap = new THREE.CanvasTexture(glow);
+    this.wallMap.colorSpace = THREE.SRGBColorSpace;
+    this.glowMap.colorSpace = THREE.SRGBColorSpace;
+    for (const tex of [this.wallMap, this.glowMap]) {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.anisotropy = 8;
+    }
+
+    const plate = document.createElement("canvas");
+    plate.width = 256;
+    plate.height = 256;
+    const pg = plate.getContext("2d")!;
+    pg.fillStyle = "#cfc8bc";
+    pg.fillRect(0, 0, 256, 256);
+    pg.strokeStyle = "#6d675e";
+    pg.lineWidth = 3;
+    for (let i = 0; i <= 256; i += 64) {
+      pg.beginPath();
+      pg.moveTo(i, 0);
+      pg.lineTo(i, 256);
+      pg.stroke();
+      pg.beginPath();
+      pg.moveTo(0, i);
+      pg.lineTo(256, i);
+      pg.stroke();
+    }
+    pg.fillStyle = "#8a847a";
+    for (let y = 16; y < 256; y += 64) {
+      for (let x = 16; x < 256; x += 64) {
+        pg.beginPath();
+        pg.arc(x, y, 3, 0, Math.PI * 2);
+        pg.fill();
+      }
+    }
+    this.plateMap = new THREE.CanvasTexture(plate);
+    this.plateMap.colorSpace = THREE.SRGBColorSpace;
+    this.plateMap.wrapS = this.plateMap.wrapT = THREE.RepeatWrapping;
+    this.plateMap.anisotropy = 8;
+
+    const tread = document.createElement("canvas");
+    tread.width = 128;
+    tread.height = 128;
+    const tg = tread.getContext("2d")!;
+    tg.fillStyle = "#3a342e";
+    tg.fillRect(0, 0, 128, 128);
+    tg.fillStyle = "#8d8478";
+    for (let y = 4; y < 128; y += 16) tg.fillRect(0, y, 128, 7);
+    tg.fillStyle = "#2a241f";
+    tg.fillRect(0, 0, 6, 128);
+    tg.fillRect(122, 0, 6, 128);
+    this.treadMap = new THREE.CanvasTexture(tread);
+    this.treadMap.colorSpace = THREE.SRGBColorSpace;
+    this.treadMap.wrapS = this.treadMap.wrapT = THREE.RepeatWrapping;
+    this.treadMap.anisotropy = 8;
+  }
+
+  private grassTex() {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 256;
+    const g = c.getContext("2d")!;
+    const img = g.createImageData(256, 256);
+    for (let y = 0; y < 256; y++) {
+      for (let x = 0; x < 256; x++) {
+        const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+        const f = n - Math.floor(n);
+        const blot = Math.sin(x * 0.07) * Math.cos(y * 0.05);
+        const i = (y * 256 + x) * 4;
+        img.data[i] = 62 + f * 40 + blot * 10;
+        img.data[i + 1] = 108 + f * 50 + blot * 16;
+        img.data[i + 2] = 38 + f * 18;
+        img.data[i + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(18, 18);
+    tex.anisotropy = 8;
+    return tex;
   }
 
   private mat(key: string, color: number, extra: THREE.MeshStandardMaterialParameters = {}) {

@@ -175,6 +175,7 @@
   border-radius: 0.6rem;
   border: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-bg) 40%, transparent);
+  pointer-events: none;
 }
 
 .key-hints {
