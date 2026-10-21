@@ -202,73 +202,90 @@
   }
 }
 
-.town-bar {
-  position: absolute;
-  left: 0.75rem;
-  bottom: 0.85rem;
+.hud-actions {
   display: flex;
+  align-items: flex-start;
   gap: 0.4rem;
-  z-index: 4;
-  pointer-events: auto;
 }
 
-.town-btn {
+.icon-col {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  width: 5.6rem;
+}
+
+.chrome-toggle {
+  position: absolute;
+  top: max(0.7rem, env(safe-area-inset-top));
+  right: 0.75rem;
+  z-index: 8;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   height: 2.4rem;
-  padding: 0 0.75rem;
+  padding: 0 0.8rem;
   border-radius: 999px;
-  border: 1px solid var(--color-primary);
-  background: color-mix(in srgb, var(--color-bg) 78%, transparent);
-  color: var(--color-primary);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+  color: var(--color-fg);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .town-sheet {
   position: absolute;
-  left: 0.6rem;
-  right: 0.6rem;
-  bottom: 3.6rem;
+  top: auto;
+  left: 0.75rem;
+  right: auto;
+  bottom: 5.5rem;
+  width: min(17rem, calc(100% - 1.5rem));
   z-index: 6;
-  max-height: min(62vh, 28rem);
+  max-height: 14.5rem;
   overflow: auto;
-  padding: 0.9rem;
+  padding: 0.75rem;
   border-radius: 1rem;
   border: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
   color: var(--color-fg);
+  backdrop-filter: blur(12px);
+}
+
+.town-sheet-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
 
 .town-sheet h2 {
-  margin: 0.2rem 0 0.35rem;
-  font-size: 1.25rem;
+  margin: 0.15rem 0 0.45rem;
+  font-size: 1.15rem;
 }
 
 .town-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.4rem;
-  margin: 0.6rem 0;
+  gap: 0.35rem;
+  margin: 0 0 0.45rem;
 }
 
 .town-grid button {
-  min-height: 2.6rem;
-  border-radius: 0.7rem;
+  min-height: 2.3rem;
+  border-radius: 0.65rem;
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-fg);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
 }
 
 @media (pointer: coarse), (max-width: 900px) {
-  .town-bar {
-    bottom: 9.4rem;
-  }
   .town-sheet {
-    bottom: 12.2rem;
+    bottom: auto;
+    top: 7.6rem;
+    max-height: 12.5rem;
   }
 }
 
@@ -361,6 +378,17 @@
 
 .skill:disabled {
   opacity: 0.45;
+}
+
+@media (pointer: coarse), (max-width: 900px) {
+  .skill {
+    width: 3.7rem;
+    height: 3.7rem;
+  }
+  .stick {
+    width: 6.2rem;
+    height: 6.2rem;
+  }
 }
 
 .icon-btn {

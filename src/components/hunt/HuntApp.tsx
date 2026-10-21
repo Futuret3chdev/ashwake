@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CircleHelp, Clapperboard, Eye, Gem, Home, Leaf, Lock, Pause, Play, Shield, Volume2, VolumeX, Warehouse, Zap } from "lucide-react";
+import { CircleHelp, Clapperboard, Eye, EyeOff, Gem, Home, Leaf, Lock, Pause, Play, Shield, Volume2, VolumeX, Warehouse, X, Zap } from "lucide-react";
 import { AudioBus } from "@/game/audio";
 import { Input } from "@/game/input";
 import { UPGRADE_COST, UPGRADE_MAX, UPGRADE_META, defaultSave, loadSave, writeSave, type DecorKind, type Save } from "@/game/save";
@@ -30,6 +30,7 @@ export function HuntApp() {
   const [muted, setMuted] = useState(false);
   const [film, setFilm] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [chrome, setChrome] = useState(true);
   const [civic, setCivic] = useState<{ form: "machine" | "town"; eye: boolean; decor: DecorKind[]; t3x: number }>({
     form: "machine",
     eye: false,
@@ -212,7 +213,7 @@ export function HuntApp() {
     if (!sim) return;
     sim.toggleTown();
     pullCivic();
-    setSheet(sim.form === "town");
+    setSheet(false);
   };
   const onEye = () => {
     simRef.current?.toggleEye();
@@ -227,7 +228,13 @@ export function HuntApp() {
     <div className="game-root">
       <div className="game-canvas" ref={mountRef} />
       <div className="overlay">
-        {playing && (
+        {playing && !chrome && (
+          <button className="chrome-toggle" type="button" onClick={() => setChrome(true)}>
+            <Eye size={16} />
+            Show controls
+          </button>
+        )}
+        {playing && chrome && (
           <>
             <div className="hud-top">
               <div className="hud-cluster">
@@ -256,64 +263,73 @@ export function HuntApp() {
                   Verdant wake
                 </div>
               </div>
-              <div className="flex items-start gap-2">
+              <div className="hud-actions">
                 <div className="hud-cluster stat-block">
                   <strong ref={t3xRef}>0</strong>
                   <span>t3x</span>
                   <strong ref={cityRef}>0</strong>
                   <span>towns</span>
                 </div>
-                <button className="icon-btn" type="button" aria-label="Pause" onClick={() => inputRef.current?.tap("pause")}>
-                  <Pause size={18} />
-                </button>
+                <div className="icon-col">
+                  <button className="icon-btn" type="button" aria-label={civic.form === "town" ? "Pack into a machine" : "Unpack into a town"} onClick={onUnpack}>
+                    <Home size={18} />
+                  </button>
+                  <button className="icon-btn" type="button" aria-label={civic.eye ? "City view" : "First person"} onClick={onEye}>
+                    <Eye size={18} />
+                  </button>
+                  {civic.form === "town" && (
+                    <button className="icon-btn" type="button" aria-label="Town trade" onClick={() => setSheet(true)}>
+                      <Gem size={18} />
+                    </button>
+                  )}
+                  <button className="icon-btn" type="button" aria-label="Hide controls" onClick={() => { setSheet(false); setChrome(false); }}>
+                    <EyeOff size={18} />
+                  </button>
+                  <button className="icon-btn" type="button" aria-label="Pause" onClick={() => inputRef.current?.tap("pause")}>
+                    <Pause size={18} />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="toast" ref={toastRef} hidden />
-            <div className="key-hints">
-              <span>
-                <kbd>W</kbd> drive
-              </span>
-              <span>
-                <kbd>A</kbd> left <kbd>D</kbd> right
-              </span>
-              <span>
-                <kbd>Space</kbd> jaw
-              </span>
-              <span>
-                <kbd>Shift</kbd> overdrive
-              </span>
-              <span>
-                <kbd>Q</kbd> aegis
-              </span>
-              <span>
-                <kbd>E</kbd> mercy
-              </span>
-            </div>
-            <div className="town-bar">
-              <button className="town-btn" type="button" onClick={onUnpack}>
-                <Home size={15} />
-                {civic.form === "town" ? "Pack" : "Unpack"}
-              </button>
-              <button className="town-btn" type="button" onClick={onEye}>
-                <Eye size={15} />
-                {civic.eye ? "City" : "Eyes"}
-              </button>
-              {civic.form === "town" && (
-                <button className="town-btn" type="button" onClick={() => setSheet((v) => !v)}>
-                  Town
-                </button>
-              )}
-            </div>
+            {civic.form !== "town" && (
+              <div className="key-hints">
+                <span>
+                  <kbd>W</kbd> drive
+                </span>
+                <span>
+                  <kbd>A</kbd> left <kbd>D</kbd> right
+                </span>
+                <span>
+                  <kbd>Space</kbd> jaw
+                </span>
+                <span>
+                  <kbd>Shift</kbd> overdrive
+                </span>
+                <span>
+                  <kbd>Q</kbd> aegis
+                </span>
+                <span>
+                  <kbd>E</kbd> mercy
+                </span>
+              </div>
+            )}
             {sheet && civic.form === "town" && (
               <div className="town-sheet">
-                <div className="eyebrow">
-                  <span>unpacked</span>
-                  <span className="pill">
-                    <Gem size={14} /> {civic.t3x} t3x
-                  </span>
+                <div className="town-sheet-top">
+                  <div>
+                    <div className="eyebrow">
+                      <span>town</span>
+                      <span className="pill">
+                        <Gem size={14} /> {civic.t3x} t3x
+                      </span>
+                    </div>
+                    <h2>Decks</h2>
+                  </div>
+                  <button className="btn" type="button" onClick={() => setSheet(false)}>
+                    <X size={16} /> Hide
+                  </button>
                 </div>
-                <h2>Vantage is a town</h2>
-                <p>Trade, dress the decks, set the guns and shields. Pack when you need the jaw.</p>
                 <div className="town-grid">
                   <button type="button" onClick={() => onBuy("fuel")}>Fuel · 12</button>
                   <button type="button" onClick={() => onBuy("plate")}>Plate · 18</button>
@@ -322,15 +338,10 @@ export function HuntApp() {
                   <button type="button" onClick={() => onBuy("turret")}>Turret · 40</button>
                   <button type="button" onClick={() => onBuy("shield")}>Shield · 36</button>
                 </div>
-                <p className="fine">{civic.decor.length ? civic.decor.join(" · ") : "No fittings yet. Six hardpoints."}</p>
-                <div className="actions">
-                  <button className="btn" type="button" onClick={() => { simRef.current?.stripDecor(); pullCivic(); }}>
-                    Strip last
-                  </button>
-                  <button className="btn btn-primary" type="button" onClick={onUnpack}>
-                    Pack into a machine
-                  </button>
-                </div>
+                <p className="fine">{civic.decor.length ? civic.decor.join(" · ") : "Nothing fitted. Six hardpoints."}</p>
+                <button className="btn" type="button" onClick={() => { simRef.current?.stripDecor(); pullCivic(); }}>
+                  Strip last fitting
+                </button>
               </div>
             )}
             <canvas className="minimap" ref={miniRef} width={180} height={180} />
@@ -349,24 +360,26 @@ export function HuntApp() {
               >
                 <i ref={knobRef} />
               </div>
-              <div className="skill-pad">
-                <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("jaw")}>
-                  <Zap size={16} />
-                  Jaw
-                </button>
-                <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("over")}>
-                  <Play size={16} />
-                  Drive
-                </button>
-                <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("aegis")}>
-                  <Shield size={16} />
-                  Aegis
-                </button>
-                <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("mercy")}>
-                  <Leaf size={16} />
-                  Mercy
-                </button>
-              </div>
+              {civic.form !== "town" && (
+                <div className="skill-pad">
+                  <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("jaw")}>
+                    <Zap size={16} />
+                    Jaw
+                  </button>
+                  <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("over")}>
+                    <Play size={16} />
+                    Drive
+                  </button>
+                  <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("aegis")}>
+                    <Shield size={16} />
+                    Aegis
+                  </button>
+                  <button className="skill" type="button" data-ready="1" onClick={() => inputRef.current?.tap("mercy")}>
+                    <Leaf size={16} />
+                    Mercy
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
