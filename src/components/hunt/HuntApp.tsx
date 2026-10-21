@@ -338,7 +338,7 @@ export function HuntApp() {
 
         {film && (
           <div className="film" role="dialog" aria-label="ASHWAKE trailer">
-            <video src="/trailer.mp4" controls autoPlay playsInline />
+            <video src="/ashwake-trailer.mp4" controls autoPlay playsInline />
             <button className="btn" type="button" onClick={() => setFilm(false)}>
               Close
             </button>
