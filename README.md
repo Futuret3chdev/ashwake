@@ -14,5 +14,5 @@ Multiplayer sorties come after beta.
 
 ## Trailer
 
-A 66-second promo, one continuous approach, ending on the T3X token. Play it from **Watch trailer** on the site, or download the full file from the [trailer release](https://github.com/Futuret3chdev/ashwake/releases/tag/trailer).
+A 3-minute promo of one city, ending on the T3X token. Play it from **Watch trailer** on the site, or download the full file from the [trailer release](https://github.com/Futuret3chdev/ashwake/releases/tag/trailer).
 
