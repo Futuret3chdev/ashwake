@@ -187,7 +187,7 @@ export class HuntView {
     this.storm.position.y = 28;
     this.scene.add(this.storm);
 
-    this.player = this.buildCity("player");
+    this.player = this.buildCity("player", 0);
     this.scene.add(this.player);
 
     const pgeo = new THREE.BufferGeometry();
@@ -368,93 +368,109 @@ export class HuntView {
   }
 
   private meshFor(e: Ent) {
-    if (e.kind === "prey") return this.buildCity("prey");
-    if (e.kind === "rival") return this.buildCity("rival");
+    if (e.kind === "prey") return this.buildCity("prey", e.id);
+    if (e.kind === "rival") return this.buildCity("rival", e.id);
     if (e.kind === "beast") return this.buildBeast();
     if (e.kind === "fissure") return this.buildFissure();
     return this.buildOrb();
   }
 
-  private buildCity(kind: "player" | "prey" | "rival") {
-    const g = new THREE.Group();
-    const town = kind === "prey";
-    const rival = kind === "rival";
-    const scale = rival ? 1.16 : town ? 0.62 : 1;
-    const accentHex = kind === "player" ? 0xc6ef4a : town ? 0x7ec8c3 : 0xff5a3c;
-    const wood = this.mat("wood-" + kind, town ? 0xd7b07a : 0xc4925a, { roughness: 0.82, metalness: 0.04 });
-    const stone = this.mat("keep-" + kind, town ? 0xf3e6c8 : rival ? 0xe7d3c4 : 0xf4ead4, { roughness: 0.72, metalness: 0.02 });
-    const roof = this.mat("roof-" + kind, town ? 0xd07a4a : rival ? 0xa33a32 : 0xc44732, { roughness: 0.66, metalness: 0.05 });
-    const track = this.mat("track-" + kind, 0x4a3b32, { roughness: 0.78, metalness: 0.18 });
-    const cleat = this.mat("cleat-" + kind, 0x6e5848, { roughness: 0.7, metalness: 0.22 });
-    const tooth = this.mat("tooth", 0xf7f1e4, { roughness: 0.45, metalness: 0.08 });
-    const lip = this.mat("lip-" + kind, rival ? 0x8d2e28 : 0xa34432, { roughness: 0.55, metalness: 0.12 });
-    const glow = this.mat("glow-" + kind, 0xffd27a, { emissive: 0xffc14a, emissiveIntensity: 0.9, roughness: 0.4 });
-    const accent = this.mat("accent-" + kind, accentHex, { emissive: accentHex, emissiveIntensity: 0.7, roughness: 0.4 });
+  private specFor(kind: "player" | "prey" | "rival", id: number) {
+    const prey = [
+      { key: "market", scale: 0.62, iron: 0xc4a06a, plate: 0xe7c48a, bronze: 0xb07a45, glow: 0x7ec8c3, len: 11, beam: 7.4, crown: "masts" as const, jaw: "gate" as const, stacks: 1, tiers: [{ w: 6.2, h: 1.15, d: 6.4, y: 3.35, z: 0.4 }] },
+      { key: "brine", scale: 0.66, iron: 0xb7c4c8, plate: 0xd5e4ea, bronze: 0x8aa8b0, glow: 0x7ee0d0, len: 12.5, beam: 5.6, crown: "dome" as const, jaw: "gate" as const, stacks: 1, tiers: [{ w: 4.4, h: 1.3, d: 5.2, y: 3.35, z: 0.8 }] },
+      { key: "cinder", scale: 0.7, iron: 0x4a382f, plate: 0x6a4a38, bronze: 0xa85a32, glow: 0xff6a22, len: 11.5, beam: 6.4, crown: "kiln" as const, jaw: "kiln" as const, stacks: 4, tiers: [{ w: 5.2, h: 1.5, d: 5.6, y: 3.35, z: 0.6 }] },
+      { key: "moss", scale: 0.64, iron: 0x6d8a62, plate: 0x8eaa78, bronze: 0xc4a15a, glow: 0xd6ef6a, len: 13, beam: 5.2, crown: "dome" as const, jaw: "gate" as const, stacks: 2, tiers: [{ w: 4.2, h: 1.05, d: 7.2, y: 3.3, z: 0.5 }] },
+      { key: "kiln", scale: 0.68, iron: 0x8a5a3c, plate: 0xc47a48, bronze: 0xd4894a, glow: 0xffa040, len: 10, beam: 6.8, crown: "kiln" as const, jaw: "kiln" as const, stacks: 2, tiers: [{ w: 5.4, h: 1.2, d: 4.4, y: 3.3, z: 0.2 }] },
+      { key: "orchard", scale: 0.6, iron: 0xe4d2b4, plate: 0xf3e6cc, bronze: 0xc4a574, glow: 0xffe08a, len: 12, beam: 5.4, crown: "masts" as const, jaw: "gate" as const, stacks: 0, tiers: [{ w: 4.6, h: 1.25, d: 6.2, y: 3.3, z: 0.6 }] },
+      { key: "pebble", scale: 0.52, iron: 0x9a8b78, plate: 0xd8cbb6, bronze: 0xa89078, glow: 0xffd27a, len: 9, beam: 5.2, crown: "dome" as const, jaw: "gate" as const, stacks: 1, tiers: [{ w: 3.6, h: 1.4, d: 3.6, y: 3.3, z: 0.2 }] },
+    ];
+    const rivals = [
+      { key: "mother", scale: 1.22, iron: 0x5a463c, plate: 0x7a6254, bronze: 0xc47a42, glow: 0xff4a32, len: 16.5, beam: 8.4, crown: "wolf" as const, jaw: "wolf" as const, stacks: 4, tiers: [{ w: 6.8, h: 2.1, d: 8.4, y: 3.45, z: 1.1 }, { w: 5.1, h: 1.8, d: 5.6, y: 5.55, z: 1.5 }, { w: 3.4, h: 1.6, d: 3.6, y: 7.35, z: 1.7 }] },
+      { key: "haldred", scale: 1.08, iron: 0x6e5c48, plate: 0x8d7860, bronze: 0xd8a05a, glow: 0xffe08a, len: 18, beam: 5.8, crown: "hawk" as const, jaw: "beak" as const, stacks: 2, tiers: [{ w: 4.6, h: 1.15, d: 9.2, y: 3.35, z: 1.4 }, { w: 3.2, h: 1.05, d: 5.4, y: 4.5, z: 2.2 }] },
+      { key: "saint", scale: 1.12, iron: 0x3c3834, plate: 0x5c564e, bronze: 0x8a7048, glow: 0xf2e2a8, len: 13, beam: 6.2, crown: "spire" as const, jaw: "gate" as const, stacks: 0, tiers: [{ w: 4.4, h: 2.4, d: 5.2, y: 3.4, z: 0.8 }, { w: 2.6, h: 2.2, d: 2.8, y: 5.8, z: 0.9 }, { w: 1.5, h: 1.8, d: 1.6, y: 8.0, z: 0.9 }] },
+    ];
+    if (kind === "player") {
+      return { key: "vantage", scale: 1, iron: 0x6b5344, plate: 0x8a705c, bronze: 0xc4844a, glow: 0xffb15a, len: 15.2, beam: 7.2, crown: "wolf" as const, jaw: "wolf" as const, stacks: 3, tiers: [{ w: 5.8, h: 1.9, d: 7.6, y: 3.45, z: 1.2 }, { w: 4.2, h: 1.7, d: 5.0, y: 5.35, z: 1.5 }, { w: 2.7, h: 1.45, d: 3.2, y: 7.05, z: 1.7 }] };
+    }
+    if (kind === "rival") return rivals[Math.abs(id) % rivals.length]!;
+    return prey[Math.abs(id) % prey.length]!;
+  }
 
-    const hull: THREE.BufferGeometry[] = [];
-    const walls: THREE.BufferGeometry[] = [];
-    const roofs: THREE.BufferGeometry[] = [];
-    const lights: THREE.BufferGeometry[] = [];
-    const marks: THREE.BufferGeometry[] = [];
-    const put = (
-      list: THREE.BufferGeometry[],
-      geo: THREE.BufferGeometry,
-      x: number,
-      y: number,
-      z: number,
-      sx = 1,
-      sy = 1,
-      sz = 1,
-      ry = 0,
-    ) => {
-      geo.applyMatrix4(
-        new THREE.Matrix4().compose(
-          new THREE.Vector3(x, y, z),
-          new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)),
-          new THREE.Vector3(sx, sy, sz),
-        ),
-      );
+  private buildCity(kind: "player" | "prey" | "rival", id = 0) {
+    const spec = this.specFor(kind, id);
+    const g = new THREE.Group();
+    const iron = this.mat(spec.key + "-iron", spec.iron, { roughness: 0.58, metalness: 0.38 });
+    const plate = this.mat(spec.key + "-plate", spec.plate, { roughness: 0.5, metalness: 0.3 });
+    const bronze = this.mat(spec.key + "-bronze", spec.bronze, { roughness: 0.4, metalness: 0.58 });
+    const glow = this.mat(spec.key + "-glow", spec.glow, { emissive: spec.glow, emissiveIntensity: 0.9, roughness: 0.32 });
+    const track = this.mat(spec.key + "-track", 0x2c241f, { roughness: 0.78, metalness: 0.22 });
+    const cleatMat = this.mat(spec.key + "-cleat", 0x6a5648, { roughness: 0.66, metalness: 0.28 });
+    const tooth = this.mat("ivory", 0xf4eee4, { roughness: 0.42, metalness: 0.06 });
+    const ironP: THREE.BufferGeometry[] = [];
+    const plateP: THREE.BufferGeometry[] = [];
+    const bronzeP: THREE.BufferGeometry[] = [];
+    const glowP: THREE.BufferGeometry[] = [];
+    const cleatP: THREE.BufferGeometry[] = [];
+    const put = (list: THREE.BufferGeometry[], geo: THREE.BufferGeometry, x: number, y: number, z: number) => {
+      geo.applyMatrix4(new THREE.Matrix4().makeTranslation(x, y, z));
       list.push(geo);
     };
+    const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
 
-    put(hull, new THREE.BoxGeometry(8.2, 1.15, 13.6), 0, 2.55, 0.2);
-    put(hull, new THREE.BoxGeometry(7.2, 0.35, 12.2), 0, 3.25, 0.35);
-    put(hull, new THREE.BoxGeometry(6.4, 0.28, 9.4), 0, 3.5, 0.8);
+    put(ironP, box(spec.beam, 1.65, spec.len), 0, 2.2, 0.15);
+    put(ironP, box(spec.beam - 0.7, 0.42, spec.len - 1.8), 0, 3.22, 0.25);
+    const nose = box(spec.beam * 0.7, 1.05, 2.2);
+    nose.applyMatrix4(new THREE.Matrix4().makeRotationX(0.42));
+    put(ironP, nose, 0, 2.35, -spec.len * 0.46);
 
-    const houses: number[][] = town
-      ? [
-          [0, 0.4, 1.7, 1.35, 1.5],
-          [-1.7, 1.8, 1.15, 1.05, 1.05],
-          [1.6, 1.7, 1.1, 1.15, 1.0],
-        ]
-      : [
-          [-2.15, -1.5, 1.7, 1.7, 1.45],
-          [2.05, -0.9, 1.55, 1.9, 1.35],
-          [-1.7, 1.35, 1.45, 1.55, 1.25],
-          [1.85, 1.7, 1.35, 1.65, 1.2],
-          [0.1, 3.55, 1.8, 1.45, 1.5],
-          [-2.35, 3.5, 1.2, 1.25, 1.1],
-          [2.4, 3.7, 1.15, 1.35, 1.05],
-          [0, -2.6, 1.5, 1.15, 1.2],
-        ];
-    for (const [x, z, w, h, d] of houses) {
-      const base = 3.62;
-      put(walls, new THREE.BoxGeometry(w!, h!, d!), x!, base + h! / 2, z!);
-      const cap = new THREE.ConeGeometry(Math.max(w!, d!) * 0.62, h! * 0.55, 4);
-      cap.rotateY(Math.PI / 4);
-      put(roofs, cap, x!, base + h! + h! * 0.22, z!);
-      put(lights, new THREE.BoxGeometry(w! * 0.22, h! * 0.22, 0.08), x! - w! * 0.18, base + h! * 0.55, z! - d! * 0.5 - 0.02);
-      put(lights, new THREE.BoxGeometry(w! * 0.22, h! * 0.22, 0.08), x! + w! * 0.18, base + h! * 0.55, z! - d! * 0.5 - 0.02);
+    for (const t of spec.tiers) {
+      put(plateP, box(t.w, t.h, t.d), 0, t.y + t.h / 2, t.z);
+      put(glowP, box(t.w * 0.78, 0.14, 0.07), 0, t.y + t.h * 0.38, t.z - t.d / 2 - 0.04);
+      put(glowP, box(t.w * 0.62, 0.1, 0.07), 0, t.y + t.h * 0.66, t.z - t.d / 2 - 0.04);
+      put(glowP, box(0.07, t.h * 0.42, t.d * 0.62), t.w / 2 + 0.04, t.y + t.h * 0.5, t.z);
+      put(glowP, box(0.07, t.h * 0.42, t.d * 0.62), -t.w / 2 - 0.04, t.y + t.h * 0.5, t.z);
     }
 
-    if (!town) {
-      put(walls, new THREE.CylinderGeometry(1.15, 1.35, 2.4, 10), 0, 6.5, 0.6);
-      put(roofs, new THREE.ConeGeometry(1.7, 1.8, 10), 0, 8.4, 0.6);
-      put(marks, new THREE.BoxGeometry(0.7, 0.9, 0.08), 0, 6.4, -0.7);
-      put(hull, new THREE.CylinderGeometry(0.16, 0.22, 1.6, 6), -2.2, 6.6, 2.4);
-      put(hull, new THREE.CylinderGeometry(0.16, 0.22, 1.9, 6), 2.1, 6.8, 3.1);
-    } else {
-      put(roofs, new THREE.ConeGeometry(0.7, 0.9, 8), 0, 5.5, 0.4);
+    const deck = spec.tiers[0]!;
+    for (let i = 0; i < spec.stacks; i++) {
+      const x = (i - (spec.stacks - 1) / 2) * 1.25;
+      const h = 1.6 + (i % 3) * 0.85;
+      put(ironP, new THREE.CylinderGeometry(0.16, 0.26, h, 7), x, deck.y + deck.h + h / 2, spec.len * 0.26);
+      put(glowP, new THREE.CylinderGeometry(0.09, 0.09, 0.14, 6), x, deck.y + deck.h + h, spec.len * 0.26);
+    }
+
+    const top = spec.tiers[spec.tiers.length - 1]!;
+    const crownY = top.y + top.h;
+    if (spec.crown === "spire") put(plateP, new THREE.ConeGeometry(Math.max(0.7, top.w * 0.38), 3.6, 6), 0, crownY + 1.8, top.z);
+    if (spec.crown === "dome") {
+      const dome = new THREE.SphereGeometry(Math.max(1.1, top.w * 0.38), 16, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+      put(bronzeP, dome, 0, crownY, top.z);
+    }
+    if (spec.crown === "kiln") {
+      put(plateP, new THREE.CylinderGeometry(1.35, 1.55, 1.8, 12), 0, crownY + 0.9, top.z);
+      const cap = new THREE.TorusGeometry(0.7, 0.12, 6, 14);
+      cap.rotateX(Math.PI / 2);
+      put(glowP, cap, 0, crownY + 1.75, top.z);
+    }
+    if (spec.crown === "masts") {
+      for (const x of [-1.4, 1.4]) put(ironP, new THREE.CylinderGeometry(0.08, 0.1, 2.4, 5), x, crownY + 1.2, top.z);
+    }
+
+    const headZ = -spec.len * 0.4;
+    if (spec.jaw === "wolf") {
+      put(bronzeP, box(spec.beam * 0.58, 1.25, 2.5), 0, 3.65, headZ);
+      put(bronzeP, new THREE.ConeGeometry(0.26, 0.7, 5), -0.95, 4.45, headZ);
+      put(bronzeP, new THREE.ConeGeometry(0.26, 0.7, 5), 0.95, 4.45, headZ);
+      put(glowP, new THREE.SphereGeometry(0.16, 8, 8), -0.48, 3.75, headZ - 1.15);
+      put(glowP, new THREE.SphereGeometry(0.16, 8, 8), 0.48, 3.75, headZ - 1.15);
+    }
+    if (spec.jaw === "beak") {
+      const beak = new THREE.ConeGeometry(0.62, 3.1, 5);
+      beak.rotateX(-Math.PI / 2);
+      put(bronzeP, beak, 0, 3.15, headZ - 1.8);
+      put(glowP, new THREE.SphereGeometry(0.12, 8, 8), -0.28, 3.45, headZ - 0.4);
+      put(glowP, new THREE.SphereGeometry(0.12, 8, 8), 0.28, 3.45, headZ - 0.4);
     }
 
     const bake = (parts: THREE.BufferGeometry[], material: THREE.Material) => {
@@ -464,79 +480,83 @@ export class HuntView {
       if (!merged) return;
       g.add(new THREE.Mesh(merged, material));
     };
-    bake(hull, wood);
-    bake(walls, stone);
-    bake(roofs, roof);
-    bake(lights, glow);
-    bake(marks, accent);
+    bake(ironP, iron);
+    bake(plateP, plate);
+    bake(bronzeP, bronze);
+    bake(glowP, glow);
 
-    const mouthY = town ? 2.15 : 2.35;
-    const mouthZ = town ? -6.15 : -6.7;
-    const mouthR = town ? 1.15 : 1.7;
-    const lipMesh = new THREE.Mesh(new THREE.TorusGeometry(mouthR, town ? 0.22 : 0.32, 8, 18), lip);
-    lipMesh.position.set(0, mouthY, mouthZ);
-    g.add(lipMesh);
-    const throat = new THREE.Mesh(
-      new THREE.CircleGeometry(mouthR * 0.82, 16),
-      this.mat("throat", 0x1a1210, { roughness: 1, side: THREE.DoubleSide }),
-    );
-    throat.position.set(0, mouthY, mouthZ + 0.05);
-    g.add(throat);
-
+    const wide = spec.jaw === "wolf" ? 1 : spec.jaw === "beak" ? 0.62 : spec.jaw === "kiln" ? 0.9 : 0.72;
+    const mouthZ = -spec.len * 0.5 - 0.15;
+    const mouthY = 2.45;
     const jawL = new THREE.Group();
     const jawR = new THREE.Group();
-    jawL.position.set(0, mouthY, mouthZ);
-    jawR.position.set(0, mouthY, mouthZ);
-    const toothGeo = new THREE.ConeGeometry(town ? 0.12 : 0.16, town ? 0.42 : 0.58, 5);
-    const count = town ? 5 : 7;
-    for (let i = 0; i < count; i++) {
-      const a = -0.7 + (1.4 * i) / (count - 1);
-      const upper = new THREE.Mesh(toothGeo, tooth);
-      upper.position.set(Math.sin(a) * mouthR * 0.92, Math.cos(a) * mouthR * 0.55 + 0.15, -0.15);
-      upper.rotation.z = -a;
-      upper.rotation.x = Math.PI;
-      jawL.add(upper);
-      const lower = new THREE.Mesh(toothGeo, tooth);
-      lower.position.set(Math.sin(a) * mouthR * 0.92, -Math.cos(a) * mouthR * 0.45 - 0.05, -0.15);
-      lower.rotation.z = a;
-      jawR.add(lower);
+    jawL.position.set(0, mouthY + 0.55, mouthZ);
+    jawR.position.set(0, mouthY - 0.15, mouthZ);
+    const upper = new THREE.Mesh(box(spec.beam * 0.5 * wide + 1.2, 0.42, spec.jaw === "beak" ? 3.2 : 2.4), bronze);
+    upper.position.set(0, 0.15, -1.15);
+    jawL.add(upper);
+    const lower = new THREE.Mesh(box(spec.beam * 0.48 * wide + 1.1, 0.48, spec.jaw === "beak" ? 3.4 : 2.6), bronze);
+    lower.position.set(0, -0.12, -1.25);
+    jawR.add(lower);
+    const toothGeo = new THREE.ConeGeometry(0.13, spec.jaw === "kiln" ? 0.36 : 0.5, 5);
+    const teeth = spec.jaw === "gate" ? 4 : 6;
+    for (let i = 0; i < teeth; i++) {
+      const x = (i - (teeth - 1) / 2) * (0.42 * wide + 0.28);
+      const t1 = new THREE.Mesh(toothGeo, tooth);
+      t1.position.set(x, -0.12, spec.jaw === "beak" ? -2.4 : -2.05);
+      t1.rotation.x = Math.PI;
+      jawL.add(t1);
+      const t2 = new THREE.Mesh(toothGeo, tooth);
+      t2.position.set(x, 0.16, spec.jaw === "beak" ? -2.5 : -2.15);
+      jawR.add(t2);
+    }
+    if (spec.jaw === "kiln") {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.14, 6, 14), glow);
+      ring.position.set(0, mouthY, mouthZ);
+      g.add(ring);
     }
     g.add(jawL, jawR);
 
-    const wheelGeo = new THREE.CylinderGeometry(town ? 0.55 : 0.72, town ? 0.55 : 0.72, 1.15, 14);
-    wheelGeo.rotateZ(Math.PI / 2);
     const wheels: THREE.Object3D[] = [];
-    const span = town ? 8.2 : 12.4;
-    const cleatParts: THREE.BufferGeometry[] = [];
-    for (const x of [town ? -4.35 : -5.15, town ? 4.35 : 5.15]) {
-      const belt = new THREE.Mesh(new THREE.BoxGeometry(1.35, town ? 1.55 : 1.85, span), track);
-      belt.position.set(x, town ? 1.15 : 1.25, 0.15);
+    const span = spec.len - 1.6;
+    const idlerGeo = new THREE.CylinderGeometry(1.05, 1.05, 1.15, 16);
+    idlerGeo.rotateZ(Math.PI / 2);
+    const roadGeo = new THREE.CylinderGeometry(0.48, 0.48, 1.05, 12);
+    roadGeo.rotateZ(Math.PI / 2);
+    for (const x of [-spec.beam / 2 - 0.85, spec.beam / 2 + 0.85]) {
+      const belt = new THREE.Mesh(box(1.25, 1.7, span), track);
+      belt.position.set(x, 1.2, 0.1);
       g.add(belt);
-      const nCleat = town ? 8 : 11;
-      for (let i = 0; i < nCleat; i++) {
-        const z = -span / 2 + 0.4 + (i * (span - 0.6)) / (nCleat - 1);
-        put(cleatParts, new THREE.BoxGeometry(1.7, 0.22, 0.42), x, 0.32, z);
+      for (const z of [-span / 2 + 0.15, span / 2 - 0.15]) {
+        const idler = new THREE.Mesh(idlerGeo, track);
+        idler.position.set(x, 1.15, z);
+        g.add(idler);
+        wheels.push(idler);
       }
-      const rollers = town ? [-2.8, 2.8] : [-4.6, -1.5, 1.6, 4.7];
-      for (const z of rollers) {
-        const w = new THREE.Mesh(wheelGeo, track);
-        w.position.set(x, town ? 1.05 : 1.15, z);
-        g.add(w);
-        wheels.push(w);
+      for (const z of [-span * 0.22, 0, span * 0.22]) {
+        const road = new THREE.Mesh(roadGeo, cleatMat);
+        road.position.set(x, 0.85, z);
+        g.add(road);
+        wheels.push(road);
+      }
+      const n = Math.max(7, Math.round(span / 1.15));
+      for (let i = 0; i < n; i++) {
+        const z = -span / 2 + 0.3 + (i * (span - 0.5)) / (n - 1);
+        put(cleatP, box(1.55, 0.2, 0.36), x, 0.28, z);
       }
     }
-    bake(cleatParts, cleat);
+    bake(cleatP, cleatMat);
 
     const shade = new THREE.Mesh(
-      new THREE.CircleGeometry(town ? 4.6 : 6.6, 24),
-      new THREE.MeshBasicMaterial({ color: 0x1c2414, transparent: true, opacity: 0.22, depthWrite: false }),
+      new THREE.CircleGeometry(spec.len * 0.42, 24),
+      new THREE.MeshBasicMaterial({ color: 0x1c2414, transparent: true, opacity: 0.2, depthWrite: false }),
     );
     shade.rotation.x = -Math.PI / 2;
-    shade.position.y = 0.05;
+    shade.position.y = 0.04;
     g.add(shade);
 
-    g.scale.setScalar(scale);
-    g.userData.baseScale = scale;
+    g.scale.setScalar(spec.scale);
+    g.userData.baseScale = spec.scale;
     g.userData.rig = { jawL, jawR, wheels, spin: 0 } satisfies CityRig;
     return g;
   }
