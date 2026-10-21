@@ -188,6 +188,7 @@ export class HuntView {
     this.scene.add(this.storm);
 
     this.player = this.buildCity("player", 0);
+    this.dressTown(this.player);
     this.scene.add(this.player);
 
     const pgeo = new THREE.BufferGeometry();
@@ -246,6 +247,20 @@ export class HuntView {
     this.player.rotation.y = sim.yaw;
     this.player.scale.setScalar(grown);
     this.poseCity(this.player, sim.jawAmt, sim.mode === "menu" ? 8 : sim.speed, dt);
+    const district = this.player.userData.district as THREE.Group | undefined;
+    if (district) {
+      const open = sim.townOpen;
+      district.scale.set(0.45 + open * 0.7, 0.05 + open * 0.95, 0.45 + open * 0.7);
+      district.position.y = (open - 1) * 2.4;
+    }
+    const slots = this.player.userData.slots as { kind: string; mesh: THREE.Object3D }[][] | undefined;
+    if (slots) {
+      const kinds = ["banner", "lamp", "turret", "shield"];
+      for (let i = 0; i < slots.length; i++) {
+        const on = sim.decor[i];
+        for (const piece of slots[i]!) piece.mesh.visible = piece.kind === on;
+      }
+    }
 
     const alive = new Set<number>();
     for (const e of sim.ents) {
@@ -346,6 +361,15 @@ export class HuntView {
         this.desired.set(sim.x - fx * (24 + k * 30) + rx * 18, y + 8 + k * 16, sim.z - fz * (24 + k * 30) + rz * 18);
         this.look.set(sim.x, y + 8, sim.z);
       }
+    } else if (sim.eye && (sim.mode === "play" || sim.mode === "paused")) {
+      const px = sim.x + rx * sim.walkX + fx * sim.walkZ;
+      const pz = sim.z + rz * sim.walkX + fz * sim.walkZ;
+      const eyeY = y + (sim.form === "town" ? 6.6 : 5.2);
+      this.desired.set(px - fx * 0.35, eyeY, pz - fz * 0.35);
+      this.look.set(px + fx * 14, eyeY - 0.15, pz + fz * 14);
+    } else if (sim.townOpen > 0.35 && sim.mode === "play") {
+      this.desired.set(sim.x - fx * 24 + rx * 18, y + 20, sim.z - fz * 24 + rz * 18);
+      this.look.set(sim.x, y + 3.5, sim.z);
     } else {
       const back = 30;
       this.desired.set(sim.x - fx * back + rx * 12, y + 16, sim.z - fz * back + rz * 12);
@@ -360,7 +384,7 @@ export class HuntView {
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.lookPos);
-    const fov = 48 + Math.min(7, Math.abs(sim.speed) * 0.14);
+    const fov = sim.eye ? 68 : 48 + Math.min(7, Math.abs(sim.speed) * 0.14);
     if (Math.abs(this.camera.fov - fov) > 0.05) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
@@ -559,6 +583,75 @@ export class HuntView {
     g.userData.baseScale = spec.scale;
     g.userData.rig = { jawL, jawR, wheels, spin: 0 } satisfies CityRig;
     return g;
+  }
+
+  private dressTown(city: THREE.Group) {
+    const district = new THREE.Group();
+    const wall = this.mat("town-wall", 0x8d735c, { roughness: 0.55, metalness: 0.28 });
+    const roof = this.mat("town-roof", 0xc4844a, { roughness: 0.48, metalness: 0.4 });
+    const glass = this.mat("town-glass", 0xffb15a, { emissive: 0xffb15a, emissiveIntensity: 0.85, roughness: 0.3 });
+    const street = new THREE.Mesh(
+      new THREE.RingGeometry(7.2, 9.4, 24),
+      new THREE.MeshStandardMaterial({ color: 0x6a5848, roughness: 0.9, metalness: 0.1 }),
+    );
+    street.rotation.x = -Math.PI / 2;
+    street.position.y = 0.15;
+    district.add(street);
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const rad = i % 2 === 0 ? 10.4 : 12.6;
+      const h = 1.6 + (i % 4) * 0.85;
+      const w = 1.5 + (i % 3) * 0.35;
+      const block = new THREE.Mesh(new THREE.BoxGeometry(w, h, w * 0.85), wall);
+      block.position.set(Math.cos(a) * rad, h / 2, Math.sin(a) * rad);
+      block.rotation.y = -a;
+      district.add(block);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(w * 0.62, h * 0.45, 4), roof);
+      cap.position.set(block.position.x, h + h * 0.18, block.position.z);
+      cap.rotation.y = Math.PI / 4 - a;
+      district.add(cap);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(w * 0.55, 0.14, 0.06), glass);
+      win.position.set(block.position.x, h * 0.55, block.position.z);
+      win.lookAt(0, h * 0.55, 0);
+      district.add(win);
+    }
+    city.add(district);
+    city.userData.district = district;
+
+    const slots: { kind: string; mesh: THREE.Object3D }[][] = [];
+    const points: [number, number, number][] = [
+      [-2.4, 5.4, -0.6],
+      [2.4, 5.4, -0.6],
+      [-2.2, 7.1, 1.8],
+      [2.2, 7.1, 1.8],
+      [0, 8.6, 1.5],
+      [-3.4, 3.8, 3.2],
+    ];
+    const bannerMat = this.mat("fit-banner", 0xc6ef4a, { emissive: 0xc6ef4a, emissiveIntensity: 0.45, roughness: 0.4 });
+    const lampMat = this.mat("fit-lamp", 0xffe08a, { emissive: 0xffe08a, emissiveIntensity: 1, roughness: 0.3 });
+    const gunMat = this.mat("fit-gun", 0x3a3028, { roughness: 0.45, metalness: 0.6 });
+    const shieldMat = this.mat("fit-shield", 0x9fd0ff, { emissive: 0x7eb6ff, emissiveIntensity: 0.55, roughness: 0.25, metalness: 0.4 });
+    for (const [x, y, z] of points) {
+      const banner = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.3, 0.7), bannerMat);
+      banner.position.set(x, y + 0.7, z);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), lampMat);
+      lamp.position.set(x, y + 0.9, z);
+      const turret = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.7, 0.9), gunMat);
+      turret.position.set(x, y + 0.45, z);
+      const shield = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.08, 6, 14), shieldMat);
+      shield.position.set(x, y + 0.8, z);
+      for (const mesh of [banner, lamp, turret, shield]) {
+        mesh.visible = false;
+        city.add(mesh);
+      }
+      slots.push([
+        { kind: "banner", mesh: banner },
+        { kind: "lamp", mesh: lamp },
+        { kind: "turret", mesh: turret },
+        { kind: "shield", mesh: shield },
+      ]);
+    }
+    city.userData.slots = slots;
   }
 
   private poseCity(mesh: THREE.Object3D, open: number, speed: number, dt: number, rig?: CityRig) {

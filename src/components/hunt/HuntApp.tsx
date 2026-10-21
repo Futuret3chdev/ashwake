@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { CircleHelp, Clapperboard, Gem, Leaf, Lock, Pause, Play, Shield, Volume2, VolumeX, Warehouse, Zap } from "lucide-react";
+import { CircleHelp, Clapperboard, Eye, Gem, Home, Leaf, Lock, Pause, Play, Shield, Volume2, VolumeX, Warehouse, Zap } from "lucide-react";
 import { AudioBus } from "@/game/audio";
 import { Input } from "@/game/input";
-import { UPGRADE_COST, UPGRADE_MAX, UPGRADE_META, defaultSave, loadSave, writeSave, type Save } from "@/game/save";
-import { Sim, type Mode, type RunResult } from "@/game/sim";
+import { UPGRADE_COST, UPGRADE_MAX, UPGRADE_META, defaultSave, loadSave, writeSave, type DecorKind, type Save } from "@/game/save";
+import { Sim, type Mode, type RunResult, type TownBuy } from "@/game/sim";
 import { HuntView } from "@/game/view";
 import { clamp } from "@/game/world";
 
@@ -29,6 +29,13 @@ export function HuntApp() {
   const [result, setResult] = useState<RunResult | null>(null);
   const [muted, setMuted] = useState(false);
   const [film, setFilm] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  const [civic, setCivic] = useState<{ form: "machine" | "town"; eye: boolean; decor: DecorKind[]; t3x: number }>({
+    form: "machine",
+    eye: false,
+    decor: [],
+    t3x: 0,
+  });
   const hullRef = useRef<HTMLSpanElement>(null);
   const fuelRef = useRef<HTMLSpanElement>(null);
   const heatRef = useRef<HTMLSpanElement>(null);
@@ -175,6 +182,8 @@ export function HuntApp() {
     sim.startHunt();
     setMode(sim.mode);
     setPanel(null);
+    setSheet(false);
+    setCivic({ form: "machine", eye: false, decor: [...sim.decor], t3x: 0 });
     setResult(null);
   }
 
@@ -193,6 +202,26 @@ export function HuntApp() {
   }
 
   const playing = mode === "play" || mode === "paused";
+  const pullCivic = () => {
+    const sim = simRef.current;
+    if (!sim) return;
+    setCivic({ form: sim.form, eye: sim.eye, decor: [...sim.decor], t3x: Math.floor(sim.t3x) });
+  };
+  const onUnpack = () => {
+    const sim = simRef.current;
+    if (!sim) return;
+    sim.toggleTown();
+    pullCivic();
+    setSheet(sim.form === "town");
+  };
+  const onEye = () => {
+    simRef.current?.toggleEye();
+    pullCivic();
+  };
+  const onBuy = (kind: TownBuy) => {
+    simRef.current?.buyTown(kind);
+    pullCivic();
+  };
 
   return (
     <div className="game-root">
@@ -260,6 +289,50 @@ export function HuntApp() {
                 <kbd>E</kbd> mercy
               </span>
             </div>
+            <div className="town-bar">
+              <button className="town-btn" type="button" onClick={onUnpack}>
+                <Home size={15} />
+                {civic.form === "town" ? "Pack" : "Unpack"}
+              </button>
+              <button className="town-btn" type="button" onClick={onEye}>
+                <Eye size={15} />
+                {civic.eye ? "City" : "Eyes"}
+              </button>
+              {civic.form === "town" && (
+                <button className="town-btn" type="button" onClick={() => setSheet((v) => !v)}>
+                  Town
+                </button>
+              )}
+            </div>
+            {sheet && civic.form === "town" && (
+              <div className="town-sheet">
+                <div className="eyebrow">
+                  <span>unpacked</span>
+                  <span className="pill">
+                    <Gem size={14} /> {civic.t3x} t3x
+                  </span>
+                </div>
+                <h2>Vantage is a town</h2>
+                <p>Trade, dress the decks, set the guns and shields. Pack when you need the jaw.</p>
+                <div className="town-grid">
+                  <button type="button" onClick={() => onBuy("fuel")}>Fuel · 12</button>
+                  <button type="button" onClick={() => onBuy("plate")}>Plate · 18</button>
+                  <button type="button" onClick={() => onBuy("banner")}>Banner · 10</button>
+                  <button type="button" onClick={() => onBuy("lamp")}>Lamp · 8</button>
+                  <button type="button" onClick={() => onBuy("turret")}>Turret · 40</button>
+                  <button type="button" onClick={() => onBuy("shield")}>Shield · 36</button>
+                </div>
+                <p className="fine">{civic.decor.length ? civic.decor.join(" · ") : "No fittings yet. Six hardpoints."}</p>
+                <div className="actions">
+                  <button className="btn" type="button" onClick={() => { simRef.current?.stripDecor(); pullCivic(); }}>
+                    Strip last
+                  </button>
+                  <button className="btn btn-primary" type="button" onClick={onUnpack}>
+                    Pack into a machine
+                  </button>
+                </div>
+              </div>
+            )}
             <canvas className="minimap" ref={miniRef} width={180} height={180} />
             <div className="touch-ui">
               <div
@@ -306,7 +379,7 @@ export function HuntApp() {
                 <span className="beta">Public beta</span>
               </div>
               <h1 className="logo">ASHWAKE</h1>
-              <p className="tag">Pilot the traction city VANTAGE. Eat towns for t3x, or let the wild cool the world before it eats you.</p>
+              <p className="tag">Pilot the traction city VANTAGE. Unpack it into a town to trade and arm the walls, then fold it back into a machine.</p>
               <div className="token-row">
                 <span className="pill">
                   <Gem size={14} /> t3x token
@@ -442,6 +515,8 @@ export function HuntApp() {
                 <li>Heat is the wake. Verdant heals. Ash storms and magma punish a greedy city.</li>
                 <li>Mercy releases a latched town or scatters beasts into t3x and cools the air.</li>
                 <li>Lakes and the lime grove cool the plates. Trampling herds heats the world.</li>
+                <li>Unpack to settle the city. Trade t3x, dress the decks, and mount turrets and shields. Pack to hunt again.</li>
+                <li>First person walks the decks while the town is open, or rides the bridge while it is a machine.</li>
                 <li>Dock from pause to bank all t3x. If the city falls, you keep a third.</li>
               </ul>
               <button className="btn btn-primary" type="button" onClick={() => setPanel(null)}>

@@ -1,5 +1,6 @@
 import type { InputFrame } from "@/game/input";
 import {
+  type DecorKind,
   type Save,
   UPGRADE_COST,
   UPGRADE_MAX,
@@ -42,7 +43,9 @@ export type Ent = {
   value: number;
 };
 
-export type Shot = { x: number; z: number; vx: number; vz: number; life: number; dmg: number };
+export type Shot = { x: number; z: number; vx: number; vz: number; life: number; dmg: number; friend?: boolean };
+
+export type TownBuy = "fuel" | "plate" | DecorKind;
 
 export type RunResult = {
   kind: "down" | "extract";
@@ -81,6 +84,12 @@ export class Sim {
   jawAmt = 0.08;
   latchId: number | null = null;
   latch = 0;
+  form: "machine" | "town" = "machine";
+  townOpen = 0;
+  eye = false;
+  walkX = 0;
+  walkZ = 0;
+  decor: DecorKind[] = [];
   aegisT = 0;
   overT = 0;
   cd = { jaw: 0, over: 0, aegis: 0, mercy: 0 };
@@ -94,6 +103,7 @@ export class Sim {
   biome: Biome = "verdant";
   save: Save;
   result: RunResult | null = null;
+  private turretCd = 0;
   private nextId = 1;
   private iFrame = 0;
   private said: Record<string, number> = {};
@@ -101,6 +111,7 @@ export class Sim {
 
   constructor(save: Save) {
     this.save = save;
+    this.decor = [...(save.decor ?? [])];
     this.spawnWorld();
     this.park();
   }
@@ -159,6 +170,10 @@ export class Sim {
     this.rivalsDown = 0;
     this.heat = 18;
     this.biome = "verdant";
+    this.form = "machine";
+    this.eye = false;
+    this.walkX = 0;
+    this.walkZ = 0;
     this.hull = this.hullMax;
     this.fuel = this.fuelMax;
     this.park();
@@ -193,6 +208,8 @@ export class Sim {
     this.shake = Math.max(0, this.shake - dt * 1.5);
     if (this.messageT > 0) this.messageT -= dt;
     this.stormAng += dt * (0.07 + this.heat * 0.0011);
+    const openTarget = this.form === "town" ? 1 : 0;
+    this.townOpen += (openTarget - this.townOpen) * Math.min(1, dt * 2.4);
 
     if (this.mode === "trailer") this.tickTrailer(dt);
     else if (this.mode === "play") this.tickPlayer(dt, inp);
@@ -263,6 +280,11 @@ export class Sim {
     this.x = 0;
     this.z = 30;
     this.yaw = 0.15;
+    this.form = "machine";
+    this.eye = false;
+    this.walkX = 0;
+    this.walkZ = 0;
+    this.townOpen = 0;
     this.shots = [];
     this.said = {};
     for (const e of this.ents) {
@@ -336,12 +358,95 @@ export class Sim {
     this.say(msg);
   }
 
+  toggleTown() {
+    if (this.mode !== "play" && this.mode !== "paused") return;
+    if (this.form === "machine") {
+      this.form = "town";
+      this.speed = 0;
+      this.latchId = null;
+      this.say("Vantage unpacks. The machine is a town.");
+    } else {
+      this.form = "machine";
+      this.eye = false;
+      this.walkX = 0;
+      this.walkZ = 0;
+      this.say("The town folds shut. Vantage is a machine again.");
+    }
+  }
+
+  toggleEye() {
+    if (this.mode !== "play" && this.mode !== "paused") return;
+    this.eye = !this.eye;
+    if (!this.eye) {
+      this.walkX = 0;
+      this.walkZ = 0;
+    }
+    this.say(this.eye ? "First person. Walk the decks." : "Back above the city.");
+  }
+
+  buyTown(kind: TownBuy) {
+    if (this.form !== "town") return false;
+    if (this.mode !== "play" && this.mode !== "paused") return false;
+    const cost = kind === "fuel" ? 12 : kind === "plate" ? 18 : kind === "banner" ? 10 : kind === "lamp" ? 8 : kind === "turret" ? 40 : 36;
+    if (this.t3x < cost) {
+      this.say("Not enough t3x on the decks.");
+      return false;
+    }
+    if (kind === "fuel") this.fuel = Math.min(this.fuelMax, this.fuel + 28);
+    else if (kind === "plate") this.hull = Math.min(this.hullMax, this.hull + 16);
+    else {
+      if (this.decor.length >= 6) {
+        this.say("Six hardpoints. Strip one before you add another.");
+        return false;
+      }
+      this.decor.push(kind);
+      this.save.decor = [...this.decor];
+      writeSave(this.save);
+    }
+    this.t3x -= cost;
+    this.sfx.push("coin");
+    const line =
+      kind === "fuel"
+        ? "Fuel drum aboard."
+        : kind === "plate"
+          ? "Hull plate riveted on."
+          : kind === "turret"
+            ? "Turret on the wall. It fires while you are a town or a machine."
+            : kind === "shield"
+              ? "Shield pylon up. Incoming blows land lighter."
+              : "The deck takes the new piece.";
+    this.say(line);
+    return true;
+  }
+
+  stripDecor() {
+    if (!this.decor.length) return false;
+    this.decor.pop();
+    this.save.decor = [...this.decor];
+    writeSave(this.save);
+    this.say("Last fitting stripped.");
+    return true;
+  }
+
   private tickPlayer(dt: number, inp: InputFrame) {
     this.survived += dt;
     this.iFrame = Math.max(0, this.iFrame - dt);
     const st = this.stats();
     const throttle = clamp(inp.throttle, -1, 1);
     const steer = clamp(inp.steer, -1, 1);
+    if (this.form === "town") {
+      this.speed += (0 - this.speed) * Math.min(1, dt * 5);
+      if (Math.abs(this.speed) < 0.15) this.speed = 0;
+      if (this.eye) {
+        this.walkX = clamp(this.walkX + steer * dt * 5.5, -6.5, 6.5);
+        this.walkZ = clamp(this.walkZ + throttle * dt * 6.5, -7.5, 7.5);
+      }
+      if (inp.jaw) this.sayOnce("jawtown", "Pack the town before the jaw can hunt.", 5);
+      if (inp.aegis) this.tryAegis(st.aegisDur);
+      if (inp.mercy) this.tryMercy(st.mercyMul);
+      this.tickGuns(dt);
+      return;
+    }
     const max = (this.overT > 0 ? st.maxSpeed * 1.42 : st.maxSpeed) * (this.fuel > 0 ? 1 : 0.3);
     const target = throttle * max;
     const accel = throttle === 0 ? 16 : 24;
@@ -369,7 +474,45 @@ export class Sim {
     if (inp.over) this.tryOver();
     if (inp.aegis) this.tryAegis(st.aegisDur);
     if (inp.mercy) this.tryMercy(st.mercyMul);
+    this.tickGuns(dt);
     this.reel(dt, f.x, f.z, st.jawRate);
+  }
+
+  private shieldMul() {
+    const n = this.decor.filter((d) => d === "shield").length;
+    if (!n) return 1;
+    return this.form === "town" ? 0.42 : 0.68;
+  }
+
+  private tickGuns(dt: number) {
+    this.turretCd = Math.max(0, this.turretCd - dt);
+    const guns = this.decor.filter((d) => d === "turret").length;
+    if (!guns || this.turretCd > 0) return;
+    let best: Ent | null = null;
+    let bestD = 42 + guns * 10;
+    for (const e of this.ents) {
+      if (!e.alive || (e.kind !== "rival" && e.kind !== "prey")) continue;
+      const d = Math.hypot(e.x - this.x, e.z - this.z);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (!best) return;
+    this.turretCd = Math.max(0.45, 1.25 - guns * 0.2);
+    const dx = best.x - this.x;
+    const dz = best.z - this.z;
+    const len = Math.hypot(dx, dz) || 1;
+    this.shots.push({
+      x: this.x,
+      z: this.z,
+      vx: (dx / len) * 42,
+      vz: (dz / len) * 42,
+      life: 1.5,
+      dmg: 7 + guns * 5,
+      friend: true,
+    });
+    this.sfx.push("hit");
   }
 
   private tryJaw(fx: number, fz: number, range: number) {
@@ -516,7 +659,7 @@ export class Sim {
 
   private chip(amount: number, reason: string) {
     if (this.mode !== "play") return;
-    const mul = this.aegisT > 0 ? 0.35 : 1;
+    const mul = (this.aegisT > 0 ? 0.35 : 1) * this.shieldMul();
     this.hull -= amount * mul;
     if (this.hull <= 0) {
       this.hull = 0;
@@ -787,8 +930,18 @@ export class Sim {
       s.x += s.vx * dt;
       s.z += s.vz * dt;
       s.life -= dt;
-      const d = Math.hypot(s.x - this.x, s.z - this.z);
-      if (d < 7 && this.mode === "play") {
+      if (s.friend) {
+        for (const e of this.ents) {
+          if (!e.alive || (e.kind !== "rival" && e.kind !== "prey")) continue;
+          if (Math.hypot(s.x - e.x, s.z - e.z) < e.r + 2.2) {
+            e.hull -= s.dmg;
+            s.life = 0;
+            this.bursts.push({ x: e.x, z: e.z });
+            if (e.hull <= 0) this.devour(e, e.kind === "rival" ? 0.85 : 0.55);
+            break;
+          }
+        }
+      } else if (Math.hypot(s.x - this.x, s.z - this.z) < 7 && this.mode === "play") {
         this.hurt(s.dmg, "Harpoon punched the outer ward.");
         s.life = 0;
       }

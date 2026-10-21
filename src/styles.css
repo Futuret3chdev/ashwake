@@ -202,6 +202,76 @@
   }
 }
 
+.town-bar {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.85rem;
+  display: flex;
+  gap: 0.4rem;
+  z-index: 4;
+  pointer-events: auto;
+}
+
+.town-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2.4rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-primary);
+  background: color-mix(in srgb, var(--color-bg) 78%, transparent);
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.town-sheet {
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  bottom: 3.6rem;
+  z-index: 6;
+  max-height: min(62vh, 28rem);
+  overflow: auto;
+  padding: 0.9rem;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  color: var(--color-fg);
+}
+
+.town-sheet h2 {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 1.25rem;
+}
+
+.town-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin: 0.6rem 0;
+}
+
+.town-grid button {
+  min-height: 2.6rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-fg);
+  font-size: 0.78rem;
+}
+
+@media (pointer: coarse), (max-width: 900px) {
+  .town-bar {
+    bottom: 9.4rem;
+  }
+  .town-sheet {
+    bottom: 12.2rem;
+  }
+}
+
 .touch-ui {
   display: none;
   position: absolute;

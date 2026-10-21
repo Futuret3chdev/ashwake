@@ -1,4 +1,5 @@
 export type UpgradeKey = "hull" | "engine" | "jaw" | "mercy" | "plates";
+export type DecorKind = "banner" | "lamp" | "turret" | "shield";
 
 export type Upgrades = Record<UpgradeKey, number>;
 
@@ -11,6 +12,7 @@ export type Save = {
   mercyActs: number;
   muted: boolean;
   upgrades: Upgrades;
+  decor: DecorKind[];
 };
 
 export const UPGRADE_MAX = 5;
@@ -36,6 +38,7 @@ export function defaultSave(): Save {
     mercyActs: 0,
     muted: false,
     upgrades: { hull: 0, engine: 0, jaw: 0, mercy: 0, plates: 0 },
+    decor: [],
   };
 }
 
@@ -45,7 +48,10 @@ export function loadSave(): Save {
     if (!raw) return defaultSave();
     const parsed = JSON.parse(raw) as Save;
     if (parsed.version !== 1 || !parsed.upgrades) return defaultSave();
-    return { ...defaultSave(), ...parsed, upgrades: { ...defaultSave().upgrades, ...parsed.upgrades } };
+    const decor = Array.isArray(parsed.decor)
+      ? parsed.decor.filter((d): d is DecorKind => d === "banner" || d === "lamp" || d === "turret" || d === "shield").slice(0, 6)
+      : [];
+    return { ...defaultSave(), ...parsed, upgrades: { ...defaultSave().upgrades, ...parsed.upgrades }, decor };
   } catch {
     return defaultSave();
   }
