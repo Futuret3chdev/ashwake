@@ -11,3 +11,8 @@ Public beta by **futuret3ch**. Pilot the traction city **VANTAGE** across a livi
 - Spend t3x at the Stack. Progress stays on this device
 
 Multiplayer sorties come after beta.
+
+## Trailer
+
+A 62-second promo. Play it from **Watch trailer** on the site, or download the full file from the [trailer release](https://github.com/Futuret3chdev/ashwake/releases/tag/trailer).
+
