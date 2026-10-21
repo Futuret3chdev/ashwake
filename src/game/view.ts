@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Ent, Sim } from "@/game/sim";
 import { GROVE, LAKES, terrainHeight } from "@/game/world";
 
@@ -35,7 +36,7 @@ export class HuntView {
   private trees: THREE.InstancedMesh;
   private crowns: THREE.InstancedMesh;
   private points: THREE.Points;
-  private parts: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number }[] = [];
+  private parts: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; cr: number; cg: number; cb: number }[] = [];
   private camPos = new THREE.Vector3(140, 28, 40);
   private lookPos = new THREE.Vector3(96, 6, -36);
   private desired = new THREE.Vector3();
@@ -45,45 +46,61 @@ export class HuntView {
   private clock = 0;
   private disposed = false;
   private heatBucket = -1;
-  private fogCool = new THREE.Color(0xc5d2c2);
+  private fogCool = new THREE.Color(0xc8bfa8);
   private fogHot = new THREE.Color(0x4a241c);
+  private palette = new Map<string, THREE.MeshStandardMaterial>();
+  private _facade: THREE.CanvasTexture | null = null;
+  private _tread: THREE.CanvasTexture | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
     this.renderer.setClearColor(0x0e1411, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
-    this.camera = new THREE.PerspectiveCamera(52, 1, 0.35, 1400);
+    this.renderer.toneMappingExposure = 1.18;
+    this.camera = new THREE.PerspectiveCamera(48, 1, 0.4, 1600);
 
-    this.fog = new THREE.FogExp2(0xc5d2c2, 0.0085);
+    this.fog = new THREE.FogExp2(0xc8bfa8, 0.0055);
     this.scene.fog = this.fog;
 
-    this.hemi = new THREE.HemisphereLight(0xc5d7c8, 0x3d4a32, 1.15);
+    this.hemi = new THREE.HemisphereLight(0xd5d0c2, 0x6a5340, 1.05);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xfff1d2, 1.45);
-    this.sun.position.set(80, 140, 40);
+    this.sun = new THREE.DirectionalLight(0xffe2b0, 1.85);
+    this.sun.position.set(-90, 64, 36);
     this.scene.add(this.sun);
+    const fill = new THREE.DirectionalLight(0x8ea4b8, 0.42);
+    fill.position.set(70, 30, -80);
+    this.scene.add(fill);
 
     this.skyMat = new THREE.ShaderMaterial({
       toneMapped: false,
       side: THREE.BackSide,
-      uniforms: { uHeat: { value: 0.15 }, uSun: { value: new THREE.Vector3(0.4, 0.75, 0.25).normalize() } },
+      uniforms: {
+        uHeat: { value: 0.12 },
+        uTime: { value: 0 },
+        uSun: { value: new THREE.Vector3(-0.55, 0.42, 0.22).normalize() },
+      },
       vertexShader: `varying vec3 vDir; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vDir = position; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: `
-        uniform float uHeat; uniform vec3 uSun; varying vec3 vDir;
+        uniform float uHeat; uniform float uTime; uniform vec3 uSun; varying vec3 vDir;
         void main(){
           vec3 dir = normalize(vDir);
           float h = clamp(dir.y, 0.0, 1.0);
-          vec3 zenG = vec3(0.33, 0.55, 0.72);
-          vec3 horG = vec3(0.78, 0.84, 0.74);
-          vec3 zenA = vec3(0.10, 0.07, 0.08);
-          vec3 horA = vec3(0.62, 0.32, 0.16);
+          vec3 zenG = vec3(0.36, 0.52, 0.72);
+          vec3 horG = vec3(0.93, 0.78, 0.55);
+          vec3 zenA = vec3(0.10, 0.06, 0.07);
+          vec3 horA = vec3(0.72, 0.28, 0.12);
           vec3 zen = mix(zenG, zenA, uHeat);
           vec3 hor = mix(horG, horA, uHeat);
-          vec3 col = mix(hor, zen, smoothstep(0.0, 0.55, h));
-          float sun = pow(max(dot(dir, uSun), 0.0), 90.0);
-          col += vec3(1.0, 0.86, 0.55) * sun * (1.0 - uHeat * 0.35);
+          vec3 col = mix(hor, zen, smoothstep(0.0, 0.42, h));
+          float bands = sin(dir.x * 7.0 + dir.z * 3.0 + uTime * 0.05) * sin(dir.z * 5.0 - dir.y * 2.0);
+          float cloud = smoothstep(0.15, 0.85, bands * 0.5 + 0.5) * smoothstep(0.02, 0.35, h) * (1.0 - h);
+          vec3 cloudCol = mix(vec3(0.96, 0.93, 0.86), vec3(0.28, 0.16, 0.14), uHeat);
+          col = mix(col, cloudCol, cloud * 0.55);
+          float sun = pow(max(dot(dir, uSun), 0.0), 180.0);
+          float glow = pow(max(dot(dir, uSun), 0.0), 8.0);
+          col += vec3(1.0, 0.78, 0.42) * sun;
+          col += vec3(1.0, 0.62, 0.32) * glow * 0.28 * (1.0 - uHeat * 0.4);
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -91,7 +108,7 @@ export class HuntView {
     this.scene.add(sky);
 
     this.groundMat = new THREE.ShaderMaterial({
-      uniforms: { uHeat: { value: 0.15 }, uTime: { value: 0 }, uSun: { value: new THREE.Vector3(0.45, 0.85, 0.2).normalize() } },
+      uniforms: { uHeat: { value: 0.12 }, uTime: { value: 0 }, uSun: { value: new THREE.Vector3(-0.55, 0.42, 0.22).normalize() } },
       vertexShader: `
         ${TERRAIN}
         varying vec3 vPos; varying float vH;
@@ -106,23 +123,28 @@ export class HuntView {
         uniform float uHeat; uniform float uTime; uniform vec3 uSun;
         varying vec3 vPos; varying float vH;
         void main(){
-          float n = sin(vPos.x * 0.21 + uTime * 0.05) * sin(vPos.z * 0.19);
-          vec3 grass = vec3(0.16, 0.34, 0.16);
-          vec3 steppe = vec3(0.46, 0.38, 0.20);
-          vec3 ash = vec3(0.28, 0.25, 0.22);
-          vec3 magma = vec3(0.42, 0.12, 0.06);
+          float n = sin(vPos.x * 0.11) * sin(vPos.z * 0.09);
+          float clump = smoothstep(-0.15, 0.75, sin(vPos.x * 0.017 + 1.7) * cos(vPos.z * 0.014));
+          vec3 dust = vec3(0.64, 0.50, 0.30);
+          vec3 scrub = vec3(0.36, 0.42, 0.18);
+          vec3 clay = vec3(0.48, 0.30, 0.16);
+          vec3 ash = vec3(0.32, 0.28, 0.24);
+          vec3 magma = vec3(0.45, 0.12, 0.05);
           float heat = uHeat;
-          vec3 col = mix(grass, steppe, smoothstep(0.22, 0.5, heat));
-          col = mix(col, ash, smoothstep(0.48, 0.74, heat));
+          vec3 col = mix(dust, scrub, clump * 0.38 * (1.0 - heat));
+          col = mix(col, clay, smoothstep(1.5, 6.0, vH) * 0.45);
+          col = mix(col, ash, smoothstep(0.42, 0.78, heat));
           col = mix(col, magma, smoothstep(0.72, 1.0, heat));
-          float crack = smoothstep(0.86, 1.0, sin(vPos.x * 0.35) * sin(vPos.z * 0.31));
+          float rut = pow(abs(sin(vPos.x * 0.31 + sin(vPos.z * 0.012) * 3.0)), 26.0);
+          float rut2 = pow(abs(sin(vPos.z * 0.19 + vPos.x * 0.02)), 30.0);
+          col = mix(col, vec3(0.20, 0.14, 0.09), clamp(rut + rut2, 0.0, 1.0) * 0.72 * (1.0 - heat * 0.3));
+          float crack = smoothstep(0.88, 1.0, sin(vPos.x * 0.35) * sin(vPos.z * 0.31));
           col = mix(col, vec3(1.0, 0.42, 0.08), crack * smoothstep(0.55, 1.0, heat));
           vec3 dx = dFdx(vPos); vec3 dy = dFdy(vPos);
           vec3 nor = normalize(cross(dx, dy));
           float lit = clamp(dot(nor, uSun), 0.0, 1.0);
-          col *= 0.42 + lit * 0.85;
-          col += vec3(0.02, 0.03, 0.015) * n;
-          col *= 0.92 + vH * 0.012;
+          col *= 0.38 + lit * 0.95;
+          col += vec3(0.03, 0.025, 0.012) * n;
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -158,6 +180,7 @@ export class HuntView {
     this.crowns = crowns;
     this.scene.add(trunks, crowns);
     this.scene.add(this.makeMountains());
+    this.scene.add(this.makeRuts());
     this.scene.add(this.makeGroveMark());
 
     const stormGeo = new THREE.BoxGeometry(22, 70, 1200);
@@ -170,14 +193,16 @@ export class HuntView {
     this.scene.add(this.player);
 
     const pgeo = new THREE.BufferGeometry();
-    const positions = new Float32Array(420 * 3);
+    const positions = new Float32Array(520 * 3);
+    const colors = new Float32Array(520 * 3);
     pgeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    pgeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     this.points = new THREE.Points(
       pgeo,
-      new THREE.PointsMaterial({ color: 0xe7f0e4, size: 0.55, transparent: true, opacity: 0.7, depthWrite: false }),
+      new THREE.PointsMaterial({ vertexColors: true, size: 0.85, transparent: true, opacity: 0.72, depthWrite: false }),
     );
     this.scene.add(this.points);
-    for (let i = 0; i < 420; i++) this.parts.push({ x: 0, y: -99, z: 0, vx: 0, vy: 0, vz: 0, life: 0, max: 1 });
+    for (let i = 0; i < 520; i++) this.parts.push({ x: 0, y: -99, z: 0, vx: 0, vy: 0, vz: 0, life: 0, max: 1, cr: 1, cg: 1, cb: 1 });
 
     for (let i = 0; i < 12; i++) {
       const m = new THREE.Mesh(
@@ -204,11 +229,12 @@ export class HuntView {
     this.groundMat.uniforms.uHeat!.value = heat;
     this.groundMat.uniforms.uTime!.value = this.clock;
     this.skyMat.uniforms.uHeat!.value = heat;
+    this.skyMat.uniforms.uTime!.value = this.clock;
     this.waterMat.uniforms.uTime!.value = this.clock;
     this.fog.color.copy(this.fogCool).lerp(this.fogHot, heat);
-    this.fog.density = 0.0065 + heat * 0.012 + (sim.inStorm ? 0.018 : 0);
-    this.hemi.color.setHex(heat < 0.55 ? 0xc5d7c8 : 0xc48a62);
-    this.hemi.groundColor.setHex(heat < 0.55 ? 0x3a4630 : 0x3a2218);
+    this.fog.density = 0.0042 + heat * 0.01 + (sim.inStorm ? 0.016 : 0);
+    this.hemi.color.setHex(heat < 0.55 ? 0xd8d2c4 : 0xc48a62);
+    this.hemi.groundColor.setHex(heat < 0.55 ? 0x6a5340 : 0x3a2218);
     this.sun.intensity = 1.5 - heat * 0.55;
     this.sun.color.setHex(heat < 0.6 ? 0xfff1d2 : 0xffb088);
     const stormMat = this.storm.material as THREE.MeshBasicMaterial;
@@ -289,29 +315,29 @@ export class HuntView {
     const rx = Math.cos(sim.yaw);
     const rz = -Math.sin(sim.yaw);
     if (sim.mode === "menu" || sim.mode === "extract" || sim.mode === "down") {
-      this.orbit += dt * 0.16;
-      this.desired.set(sim.x + Math.sin(this.orbit) * 48, y + 16, sim.z + Math.cos(this.orbit) * 48);
-      this.look.set(sim.x, y + 5, sim.z);
+      this.orbit += dt * 0.1;
+      this.desired.set(sim.x + Math.sin(this.orbit) * 36, y + 8, sim.z + Math.cos(this.orbit) * 36);
+      this.look.set(sim.x, y + 7.2, sim.z);
     } else if (sim.mode === "trailer") {
       const t = sim.trailerT;
       if (t < 6) {
-        this.desired.set(sim.x - fx * 18 + rx * 36, y + 42, sim.z - fz * 18 + rz * 36);
-        this.look.set(sim.x + fx * 24, y + 3, sim.z + fz * 24);
+        this.desired.set(sim.x - fx * 16 + rx * 28, y + 7, sim.z - fz * 16 + rz * 28);
+        this.look.set(sim.x + fx * 12, y + 8, sim.z + fz * 12);
       } else if (t < 13) {
-        this.desired.set(sim.x - fx * 30 - rx * 12, y + 11, sim.z - fz * 30 - rz * 12);
-        this.look.set(sim.x + fx * 18, y + 4, sim.z + fz * 18);
+        this.desired.set(sim.x - fx * 28 - rx * 8, y + 6.5, sim.z - fz * 28 - rz * 8);
+        this.look.set(sim.x + fx * 14, y + 6, sim.z + fz * 14);
       } else if (t < 18) {
-        this.desired.set(sim.x - fx * 16 + rx * 7, y + 6.5, sim.z - fz * 16 + rz * 7);
-        this.look.set(sim.x + fx * 14, y + 2.4, sim.z + fz * 14);
+        this.desired.set(sim.x - fx * 18 + rx * 8, y + 5.5, sim.z - fz * 18 + rz * 8);
+        this.look.set(sim.x + fx * 10, y + 5, sim.z + fz * 10);
       } else {
         const k = (t - 18) / 8;
-        this.desired.set(sim.x - fx * (28 + k * 36) + rx * 20, y + 16 + k * 36, sim.z - fz * (28 + k * 36) + rz * 20);
-        this.look.set(sim.x, y + 6, sim.z);
+        this.desired.set(sim.x - fx * (24 + k * 30) + rx * 18, y + 8 + k * 16, sim.z - fz * (24 + k * 30) + rz * 18);
+        this.look.set(sim.x, y + 8, sim.z);
       }
     } else {
       const back = 34;
-      this.desired.set(sim.x - fx * back, y + 15, sim.z - fz * back);
-      this.look.set(sim.x + fx * 12, y + 4.2, sim.z + fz * 12);
+      this.desired.set(sim.x - fx * back + rx * 11, y + 9, sim.z - fz * back + rz * 11);
+      this.look.set(sim.x + fx * 12, y + 6.8, sim.z + fz * 12);
     }
     const k = 1 - Math.exp(-3.1 * dt);
     this.camPos.lerp(this.desired, k);
@@ -322,7 +348,7 @@ export class HuntView {
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.lookPos);
-    const fov = 52 + Math.min(8, Math.abs(sim.speed) * 0.16);
+    const fov = 48 + Math.min(7, Math.abs(sim.speed) * 0.14);
     if (Math.abs(this.camera.fov - fov) > 0.05) {
       this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
@@ -339,84 +365,218 @@ export class HuntView {
 
   private buildCity(kind: "player" | "prey" | "rival") {
     const g = new THREE.Group();
-    const scale = kind === "rival" ? 1.22 : kind === "prey" ? 0.62 : 1;
-    const hull = kind === "player" ? 0x2c3833 : kind === "prey" ? 0xc8bba6 : 0x1a1d20;
-    const accent = kind === "player" ? 0xc8f542 : kind === "prey" ? 0x7ec8c3 : 0xe24b3a;
-    const body = new THREE.MeshStandardMaterial({ color: hull, metalness: 0.72, roughness: 0.36 });
-    const glow = new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.7, metalness: 0.3, roughness: 0.4 });
-    const rust = new THREE.MeshStandardMaterial({ color: 0xe2834a, metalness: 0.5, roughness: 0.42 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x141816, metalness: 0.35, roughness: 0.72 });
-    const deck = (w: number, h: number, d: number, x: number, y: number, z: number) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), body);
-      m.position.set(x, y, z);
-      g.add(m);
-      return m;
+    const town = kind === "prey";
+    const rival = kind === "rival";
+    const scale = rival ? 1.16 : town ? 0.68 : 1;
+    const accentHex = kind === "player" ? 0xc6ef4a : town ? 0x7ec8c3 : 0xff5a3c;
+    const iron = this.mat("iron", 0x4a4038, { metalness: 0.62, roughness: 0.48 });
+    const rust = this.mat(rival ? "rust-r" : "rust", rival ? 0x7a332c : 0x8a4630, { metalness: 0.45, roughness: 0.58 });
+    const stone = this.mat("stone-" + kind, town ? 0xc2ad90 : rival ? 0x5c534c : 0x7a7168, {
+      metalness: 0.12,
+      roughness: 0.78,
+      map: this.facadeTex(),
+    });
+    const dark = this.mat("tread", 0x1a1614, { metalness: 0.35, roughness: 0.72, map: this.treadTex() });
+    const glow = this.mat("glow-" + kind, accentHex, {
+      emissive: accentHex,
+      emissiveIntensity: 0.85,
+      metalness: 0.15,
+      roughness: 0.35,
+    });
+    const furnace = this.mat("furnace", 0xff7a32, { emissive: 0xff6a22, emissiveIntensity: 1.15, roughness: 0.4 });
+    const copper = this.mat("copper", 0x6d8c76, { metalness: 0.7, roughness: 0.32 });
+
+    const bodyParts: THREE.BufferGeometry[] = [];
+    const civicParts: THREE.BufferGeometry[] = [];
+    const glowParts: THREE.BufferGeometry[] = [];
+    const fireParts: THREE.BufferGeometry[] = [];
+    const put = (
+      list: THREE.BufferGeometry[],
+      geo: THREE.BufferGeometry,
+      x: number,
+      y: number,
+      z: number,
+      sx = 1,
+      sy = 1,
+      sz = 1,
+      ry = 0,
+    ) => {
+      geo.applyMatrix4(
+        new THREE.Matrix4().compose(
+          new THREE.Vector3(x, y, z),
+          new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)),
+          new THREE.Vector3(sx, sy, sz),
+        ),
+      );
+      list.push(geo);
     };
-    deck(8.4, 2.3, 14.2, 0, 2.5, 0.2);
-    const nose = deck(6.2, 1.35, 3.6, 0, 2.15, -7.6);
-    nose.rotation.x = 0.28;
-    deck(6.5, 2.5, 8.2, 0, 4.6, 0.8);
-    deck(4.2, 2.1, 4.4, 0, 6.6, 1.3);
-    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.55, 4.2, 6), glow);
-    spire.position.set(0, 9.4, 1.5);
-    g.add(spire);
-    const win = new THREE.Mesh(new THREE.BoxGeometry(6.3, 0.55, 0.18), glow);
-    win.position.set(0, 5.15, -3.2);
-    g.add(win);
-    const win2 = win.clone();
-    win2.position.set(0, 5.15, 4.6);
-    g.add(win2);
-    if (kind === "player") {
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.7, 0.12), glow);
-      plate.position.set(0, 7.5, 3.5);
-      g.add(plate);
+
+    put(bodyParts, new THREE.BoxGeometry(8.8, 1.85, 14.8), 0, 2.15, 0.35);
+    put(bodyParts, new THREE.BoxGeometry(10.4, 0.7, 13.4), 0, 1.25, 0.15);
+    const prow = new THREE.BoxGeometry(7.4, 1.2, 3.6);
+    prow.applyMatrix4(new THREE.Matrix4().makeRotationX(0.46));
+    put(bodyParts, prow, 0, 1.85, -7.6);
+    put(bodyParts, new THREE.BoxGeometry(0.55, 1.45, 11.4), -4.85, 2.45, 0.1);
+    put(bodyParts, new THREE.BoxGeometry(0.55, 1.45, 11.4), 4.85, 2.45, 0.1);
+    put(bodyParts, new THREE.BoxGeometry(7.8, 1.55, 10.4), 0, 3.7, 0.7);
+    if (!town) put(bodyParts, new THREE.BoxGeometry(6.3, 1.2, 7.6), 0, 4.85, 1.15);
+
+    put(fireParts, new THREE.BoxGeometry(5.1, 0.32, 0.16), 0, 2.45, -6.95);
+    put(fireParts, new THREE.BoxGeometry(1.5, 0.24, 0.12), -2.3, 1.85, -6.2);
+    put(fireParts, new THREE.BoxGeometry(1.5, 0.24, 0.12), 2.3, 1.85, -6.2);
+
+    const decks = town
+      ? [{ y: 4.55, z0: -1.6, z1: 3.8, x: 2.5, h: 0.85, n: 4 }]
+      : [
+          { y: 4.65, z0: -3.1, z1: 4.8, x: 3.15, h: 1.15, n: 5 },
+          { y: 6.35, z0: -1.2, z1: 3.8, x: 2.25, h: 1.4, n: 4 },
+          { y: 8.0, z0: 0.3, z1: 2.8, x: 1.45, h: 1.55, n: 3 },
+        ];
+    let seed = kind === "player" ? 3 : town ? 11 : 7;
+    const rnd = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed & 65535) / 65535;
+    };
+    for (const deck of decks) {
+      put(bodyParts, new THREE.BoxGeometry(deck.x * 2 + 1.1, 0.28, deck.z1 - deck.z0 + 1.4), 0, deck.y - 0.1, (deck.z0 + deck.z1) / 2);
+      const rows = town ? 2 : 3;
+      for (let row = 0; row < rows; row++) {
+        const z = deck.z0 + ((deck.z1 - deck.z0) * row) / Math.max(1, rows - 1);
+        const cols = Math.max(2, deck.n - row);
+        for (let col = 0; col < cols; col++) {
+          const x = (col - (cols - 1) / 2) * ((deck.x * 1.85) / cols);
+          const bh = deck.h * (0.55 + rnd() * 0.95);
+          const bw = 0.78 + rnd() * 0.38;
+          const bd = 0.72 + rnd() * 0.3;
+          put(civicParts, new THREE.BoxGeometry(bw, bh, bd), x, deck.y + bh / 2, z);
+          if (rnd() > 0.58) put(civicParts, new THREE.ConeGeometry(bw * 0.46, 0.48, 4), x, deck.y + bh + 0.22, z);
+          if (rnd() > 0.4) put(glowParts, new THREE.BoxGeometry(bw * 0.62, 0.18, 0.08), x, deck.y + bh * 0.62, z - bd * 0.55);
+        }
+      }
     }
+
+    const copperParts: THREE.BufferGeometry[] = [];
+    if (town) {
+      put(civicParts, new THREE.BoxGeometry(1.4, 1.2, 1.4), 0, 6.5, 1.1);
+      put(glowParts, new THREE.BoxGeometry(0.8, 0.22, 0.08), 0, 6.7, 0.35);
+    } else if (rival) {
+      put(bodyParts, new THREE.BoxGeometry(2.6, 2.4, 2.6), 0, 9.5, 1.35);
+      put(civicParts, new THREE.BoxGeometry(1.6, 1.5, 1.6), 0, 11.2, 1.35);
+      put(fireParts, new THREE.BoxGeometry(1.8, 0.2, 0.12), 0, 8.4, 0.0);
+    } else {
+      put(copperParts, new THREE.CylinderGeometry(1.2, 1.45, 1.15, 14), 0, 9.55, 1.25);
+      const dome = new THREE.SphereGeometry(1.35, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 9.95, 1.25));
+      copperParts.push(dome);
+      put(glowParts, new THREE.CylinderGeometry(0.16, 0.28, 1.7, 8), 0, 11.7, 1.25);
+      put(glowParts, new THREE.SphereGeometry(0.3, 10, 8), 0, 12.65, 1.25);
+    }
+
+    const stacks: number[][] = town
+      ? [[0.7, 5.8, 3.3, 1.5]]
+      : rival
+        ? [[-1.35, 8.4, 3.7, 2.8], [1.25, 9.6, 4.2, 3.4], [0.1, 8.8, 2.3, 2.3]]
+        : [[-1.55, 8.6, 3.9, 2.5], [1.4, 9.8, 4.4, 3.2], [0.15, 8.0, 2.5, 1.9]];
+    for (const [x, y, z, h] of stacks) {
+      put(bodyParts, new THREE.CylinderGeometry(0.2, 0.34, h!, 8), x!, y!, z!);
+      put(fireParts, new THREE.CylinderGeometry(0.12, 0.12, 0.14, 6), x!, y! + h! * 0.52, z!);
+    }
+    if (!town) {
+      for (const side of [-1, 1]) {
+        const brace = new THREE.BoxGeometry(0.14, 3.4, 0.14);
+        brace.applyMatrix4(new THREE.Matrix4().makeRotationZ(side * 0.55));
+        put(bodyParts, brace, side * 3.4, 6.2, -1.2);
+        const brace2 = new THREE.BoxGeometry(0.12, 2.6, 0.12);
+        brace2.applyMatrix4(new THREE.Matrix4().makeRotationZ(side * -0.4));
+        put(bodyParts, brace2, side * 2.8, 7.4, 2.2);
+      }
+    }
+
+    const bake = (parts: THREE.BufferGeometry[], material: THREE.Material) => {
+      const merged = mergeGeometries(parts, false);
+      parts.forEach((p) => p.dispose());
+      if (!merged) return;
+      g.add(new THREE.Mesh(merged, material));
+    };
+    bake(bodyParts, iron);
+    bake(civicParts, stone);
+    if (copperParts.length) bake(copperParts, copper);
+    bake(glowParts, glow);
+    bake(fireParts, furnace);
+
+    const throat = new THREE.Mesh(
+      new THREE.BoxGeometry(town ? 2.6 : 3.8, 1.55, 1.4),
+      this.mat("throat", 0x0c0a09, { roughness: 1, metalness: 0.05 }),
+    );
+    throat.position.set(0, 2.2, -6.55);
+    g.add(throat);
+
     const jawL = new THREE.Group();
     const jawR = new THREE.Group();
-    jawL.position.set(-2.15, 1.7, -8.2);
-    jawR.position.set(2.15, 1.7, -8.2);
-    const jawGeo = new THREE.BoxGeometry(1.25, 1.05, 4.4);
-    const jl = new THREE.Mesh(jawGeo, rust);
-    jl.position.set(0, 0, -1.7);
-    jawL.add(jl);
-    const jr = new THREE.Mesh(jawGeo, rust);
-    jr.position.set(0, 0, -1.7);
-    jawR.add(jr);
+    jawL.position.set(0, 2.95, -6.85);
+    jawR.position.set(0, 1.5, -6.85);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(town ? 4.8 : 7.4, 0.55, 4.2), rust);
+    upper.position.set(0, 0.2, -1.9);
+    jawL.add(upper);
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(town ? 5 : 7.2, 0.62, 4.4), rust);
+    lower.position.set(0, -0.16, -2.0);
+    jawR.add(lower);
+    const toothGeo = new THREE.ConeGeometry(0.13, 0.46, 4);
+    const teeth = town ? 5 : 7;
+    for (let i = 0; i < teeth; i++) {
+      const x = (i - (teeth - 1) / 2) * (town ? 0.72 : 0.82);
+      const t1 = new THREE.Mesh(toothGeo, rust);
+      t1.position.set(x, -0.12, -2.7);
+      t1.rotation.x = Math.PI;
+      jawL.add(t1);
+      const t2 = new THREE.Mesh(toothGeo, rust);
+      t2.position.set(x, 0.2, -2.8);
+      jawR.add(t2);
+    }
     g.add(jawL, jawR);
-    const wheelGeo = new THREE.CylinderGeometry(1.55, 1.55, 1.15, 12);
+
+    const wheelGeo = new THREE.CylinderGeometry(2.05, 2.05, 1.25, 22);
     wheelGeo.rotateZ(Math.PI / 2);
+    const hubGeo = new THREE.CylinderGeometry(0.62, 0.62, 1.35, 12);
+    hubGeo.rotateZ(Math.PI / 2);
     const wheels: THREE.Object3D[] = [];
-    for (const z of [-4.2, 0.5, 4.8]) {
-      for (const x of [-4.7, 4.7]) {
+    const zs = town ? [-3.1, 3.5] : [-4.7, 0.15, 5.2];
+    for (const z of zs) {
+      for (const x of [-5.55, 5.55]) {
         const w = new THREE.Mesh(wheelGeo, dark);
-        w.position.set(x, 1.45, z);
+        w.position.set(x, 2.05, z);
+        w.add(new THREE.Mesh(hubGeo, iron));
         g.add(w);
         wheels.push(w);
       }
     }
-    for (const [x, z] of [
-      [-1.6, 3.6],
-      [1.55, 4.3],
-    ] as const) {
-      const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.46, 2.3, 8), dark);
-      stack.position.set(x, 7.5, z);
-      g.add(stack);
+
+    const shade = new THREE.Mesh(
+      new THREE.CircleGeometry(town ? 5.2 : 7.4, 24),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false }),
+    );
+    shade.rotation.x = -Math.PI / 2;
+    shade.position.y = 0.06;
+    g.add(shade);
+
+    if (!town) {
+      const light = new THREE.PointLight(accentHex, kind === "player" ? 5 : 3, 26, 2);
+      light.position.set(0, 7.5, -2);
+      g.add(light);
     }
-    const light = new THREE.PointLight(accent, kind === "player" ? 6 : 3, 22, 2);
-    light.position.set(0, 6, -6);
-    g.add(light);
+
     g.scale.setScalar(scale);
-    const rig: CityRig = { jawL, jawR, wheels, spin: 0 };
-    g.userData.rig = rig;
+    g.userData.rig = { jawL, jawR, wheels, spin: 0 } satisfies CityRig;
     return g;
   }
 
   private poseCity(mesh: THREE.Object3D, open: number, speed: number, dt: number, rig?: CityRig) {
     const r = rig ?? (mesh.userData.rig as CityRig | undefined);
     if (!r) return;
-    r.jawL.rotation.y += (open - r.jawL.rotation.y) * 0.18;
-    r.jawR.rotation.y += (-open - r.jawR.rotation.y) * 0.18;
-    r.spin += speed * dt * 0.45;
+    const gap = open * 0.9;
+    r.jawL.rotation.x += (-gap - r.jawL.rotation.x) * 0.18;
+    r.jawR.rotation.x += (gap * 0.55 - r.jawR.rotation.x) * 0.18;
+    r.spin += speed * dt * 0.35;
     for (const w of r.wheels) w.rotation.x = r.spin;
   }
 
@@ -455,8 +615,64 @@ export class HuntView {
     return m;
   }
 
+  private mat(key: string, color: number, extra: THREE.MeshStandardMaterialParameters = {}) {
+    let m = this.palette.get(key);
+    if (!m) {
+      m = new THREE.MeshStandardMaterial({ color, ...extra });
+      this.palette.set(key, m);
+    }
+    return m;
+  }
+
+  private facadeTex() {
+    if (this._facade) return this._facade;
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#6d6256";
+    g.fillRect(0, 0, 128, 128);
+    g.fillStyle = "#3e352e";
+    for (let y = 0; y < 128; y += 8) g.fillRect(0, y, 128, 1);
+    for (let x = 0; x < 128; x += 16) g.fillRect(x, 0, 1, 128);
+    for (let row = 0; row < 6; row++) {
+      for (let col = 0; col < 4; col++) {
+        const n = row * 4 + col;
+        const lit = n % 5 === 0 || n % 7 === 0;
+        g.fillStyle = !lit ? "#14110e" : n % 2 === 0 ? "#ffb15a" : "#d7f06a";
+        g.fillRect(8 + col * 30, 8 + row * 20, 14, 9);
+      }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    this._facade = tex;
+    return tex;
+  }
+
+  private treadTex() {
+    if (this._tread) return this._tread;
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 64;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#14110f";
+    g.fillRect(0, 0, 64, 64);
+    g.fillStyle = "#3d342c";
+    for (let i = 0; i < 8; i++) g.fillRect(i * 8, 0, 3, 64);
+    g.fillStyle = "#6a4a34";
+    g.fillRect(0, 3, 64, 4);
+    g.fillRect(0, 57, 64, 4);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    this._tread = tex;
+    return tex;
+  }
+
   private makeForest() {
-    const count = 420;
+    const count = 260;
     const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 1.6, 5);
     const crownGeo = new THREE.ConeGeometry(1.15, 3.2, 6);
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.9 });
@@ -484,7 +700,7 @@ export class HuntView {
       dummy.position.y = y + 2.3 * s;
       dummy.updateMatrix();
       crowns.setMatrixAt(n, dummy.matrix);
-      color.setHex(0x3e7a3a).offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.08);
+      color.setHex(0x4d6a32).offsetHSL((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.08);
       crowns.setColorAt(n, color);
       n += 1;
     }
@@ -502,7 +718,7 @@ export class HuntView {
     const attr = this.crowns.instanceColor;
     if (!attr) return;
     for (let i = 0; i < this.crowns.count; i++) {
-      if (heat < 0.35) color.setHex(0x3e7a3a);
+      if (heat < 0.35) color.setHex(0x4d6a32);
       else if (heat < 0.62) color.setHex(0x8a7a3a);
       else if (heat < 0.82) color.setHex(0x6a5644);
       else color.setHex(0x3a2a24);
@@ -512,15 +728,35 @@ export class HuntView {
   }
 
   private makeMountains() {
-    const geo = new THREE.ConeGeometry(28, 70, 6);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x6d7a72, roughness: 0.95 });
-    const mesh = new THREE.InstancedMesh(geo, mat, 32);
+    const geo = new THREE.ConeGeometry(46, 28, 5);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.96 });
+    const mesh = new THREE.InstancedMesh(geo, mat, 28);
     const dummy = new THREE.Object3D();
-    for (let i = 0; i < 32; i++) {
-      const a = (i / 32) * Math.PI * 2;
-      const r = 640 + (i % 3) * 18;
-      dummy.position.set(Math.cos(a) * r, terrainHeight(Math.cos(a) * r, Math.sin(a) * r) + 18, Math.sin(a) * r);
-      dummy.scale.set(0.7 + (i % 4) * 0.25, 0.8 + (i % 5) * 0.2, 0.7 + (i % 4) * 0.25);
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2 + (i % 3) * 0.04;
+      const r = 700 + (i % 4) * 22;
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      dummy.position.set(x, terrainHeight(x, z) + 6, z);
+      dummy.scale.set(1.1 + (i % 3) * 0.35, 0.7 + (i % 5) * 0.22, 1.2 + (i % 4) * 0.2);
+      dummy.rotation.y = a;
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+    }
+    return mesh;
+  }
+
+  private makeRuts() {
+    const geo = new THREE.BoxGeometry(1.4, 0.12, 22);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 1 });
+    const mesh = new THREE.InstancedMesh(geo, mat, 40);
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < 40; i++) {
+      const x = (Math.random() - 0.5) * 900;
+      const z = (Math.random() - 0.5) * 900;
+      dummy.position.set(x, terrainHeight(x, z) + 0.04, z);
+      dummy.rotation.y = Math.random() * Math.PI;
+      dummy.scale.set(0.5 + Math.random() * 0.8, 1, 0.7 + Math.random() * 1.6);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     }
@@ -545,30 +781,44 @@ export class HuntView {
     const moving = Math.abs(sim.speed) > 1 || sim.mode === "menu" || sim.mode === "trailer";
     if (!moving) return;
     const f = { x: -Math.sin(sim.yaw), z: -Math.cos(sim.yaw) };
-    this.puff(sim.x - f.x * 4, terrainHeight(sim.x, sim.z) + 8, sim.z - f.z * 4, sim.heat > 60 ? 0xff8a4a : 0xd5ddd0, 2);
+    const y = terrainHeight(sim.x, sim.z);
+    this.puff(sim.x - f.x * 1.5, y + 12, sim.z - f.z * 1.5, 0x2a2622, 2);
+    if (Math.abs(sim.speed) > 2 || sim.mode === "menu") {
+      const rx = Math.cos(sim.yaw);
+      const rz = -Math.sin(sim.yaw);
+      this.puff(sim.x + rx * 5.2 - f.x * 2, y + 0.5, sim.z + rz * 5.2 - f.z * 2, 0xc4ae86, 1);
+      this.puff(sim.x - rx * 5.2 - f.x * 2, y + 0.5, sim.z - rz * 5.2 - f.z * 2, 0xc4ae86, 1);
+    }
   }
 
   private burst(x: number, y: number, z: number, n: number) {
-    for (let i = 0; i < n; i++) this.puff(x, y, z, i % 2 ? 0xc8f542 : 0xe2834a, 1);
+    for (let i = 0; i < n; i++) this.puff(x, y, z, i % 2 ? 0xc8f542 : 0xff7a32, 1);
   }
 
-  private puff(x: number, y: number, z: number, _color: number, count: number) {
+  private puff(x: number, y: number, z: number, color: number, count: number) {
+    const cr = ((color >> 16) & 255) / 255;
+    const cg = ((color >> 8) & 255) / 255;
+    const cb = (color & 255) / 255;
     for (let k = 0; k < count; k++) {
       const p = this.parts.find((q) => q.life <= 0);
       if (!p) return;
       p.x = x + (Math.random() - 0.5) * 2;
       p.y = y;
       p.z = z + (Math.random() - 0.5) * 2;
-      p.vx = (Math.random() - 0.5) * 6;
-      p.vy = 2 + Math.random() * 6;
-      p.vz = (Math.random() - 0.5) * 6;
-      p.life = 0.8 + Math.random() * 0.6;
+      p.vx = (Math.random() - 0.5) * 4;
+      p.vy = 1.5 + Math.random() * 4;
+      p.vz = (Math.random() - 0.5) * 4;
+      p.life = 0.9 + Math.random() * 0.8;
       p.max = p.life;
+      p.cr = cr;
+      p.cg = cg;
+      p.cb = cb;
     }
   }
 
   private stepParts(dt: number) {
     const attr = this.points.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const col = this.points.geometry.getAttribute("color") as THREE.BufferAttribute;
     for (let i = 0; i < this.parts.length; i++) {
       const p = this.parts[i]!;
       if (p.life <= 0) {
@@ -579,9 +829,11 @@ export class HuntView {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.z += p.vz * dt;
-      p.vy -= dt * 2;
+      p.vy += dt * 1.4;
       attr.setXYZ(i, p.x, p.y, p.z);
+      col.setXYZ(i, p.cr, p.cg, p.cb);
     }
     attr.needsUpdate = true;
+    col.needsUpdate = true;
   }
 }
