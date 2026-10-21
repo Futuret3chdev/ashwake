@@ -202,7 +202,7 @@ export class Sim {
     this.tickNature(dt);
     this.separate();
 
-    const jawTarget = this.latchId != null || (this.mode === "trailer" && this.trailerT > 12 && this.trailerT < 18) ? 0.62 : 0.08;
+    const jawTarget = this.latchId != null || (this.mode === "trailer" && this.trailerT > 12 && this.trailerT < 18) ? 0.95 : 0.08;
     this.jawAmt += (jawTarget - this.jawAmt) * Math.min(1, dt * 7);
 
     const next = biomeOf(this.heat);

@@ -14,5 +14,5 @@ Multiplayer sorties come after beta.
 
 ## Trailer
 
-A 3-minute promo of one city, ending on the T3X token. Play it from **Watch trailer** on the site, or download the full file from the [trailer release](https://github.com/Futuret3chdev/ashwake/releases/tag/trailer).
+A 2-minute-38 hunt. Different cities eat each other, and the T3X token lands on the last city. Play it from **Watch trailer**, or download the full file from the [trailer release](https://github.com/Futuret3chdev/ashwake/releases/tag/trailer).
 

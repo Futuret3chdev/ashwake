@@ -244,8 +244,10 @@ export class HuntView {
     this.paintTrees(heat);
 
     const py = terrainHeight(sim.x, sim.z);
+    const grown = 1 + Math.min(0.55, sim.cities * 0.08 + sim.rivalsDown * 0.06);
     this.player.position.set(sim.x, py, sim.z);
     this.player.rotation.y = sim.yaw;
+    this.player.scale.setScalar(grown);
     this.poseCity(this.player, sim.jawAmt, sim.mode === "menu" ? 8 : sim.speed, dt);
 
     const alive = new Set<number>();
@@ -263,6 +265,18 @@ export class HuntView {
       const y = terrainHeight(e.x, e.z);
       const bob = e.kind === "orb" ? Math.sin(this.clock * 3 + e.id) * 0.45 : e.kind === "beast" ? Math.sin(this.clock * 6 + e.id) * 0.08 : 0;
       slot.mesh.position.set(e.x, y + bob + (e.kind === "orb" ? 1.4 : 0), e.z);
+      if (e.id === sim.latchId && (e.kind === "prey" || e.kind === "rival")) {
+        const fx = -Math.sin(sim.yaw);
+        const fz = -Math.cos(sim.yaw);
+        const t = Math.min(1, sim.latch);
+        slot.mesh.position.x = e.x + (sim.x + fx * 8.4 * grown - e.x) * t * 0.94;
+        slot.mesh.position.z = e.z + (sim.z + fz * 8.4 * grown - e.z) * t * 0.94;
+        const base = (slot.mesh.userData.baseScale as number) || 1;
+        slot.mesh.scale.setScalar(base * (1 - t * 0.72));
+      } else if (e.kind === "prey" || e.kind === "rival") {
+        const base = (slot.mesh.userData.baseScale as number) || 1;
+        slot.mesh.scale.setScalar(base);
+      }
       if (e.kind !== "orb" && e.kind !== "fissure") slot.mesh.rotation.y = e.yaw;
       if (slot.rig) {
         const open = e.id === sim.latchId ? 0.6 : 0.06;
@@ -336,9 +350,9 @@ export class HuntView {
         this.look.set(sim.x, y + 8, sim.z);
       }
     } else {
-      const back = 26;
-      this.desired.set(sim.x - fx * back + rx * 9, y + 5.2, sim.z - fz * back + rz * 9);
-      this.look.set(sim.x + fx * 14, y + 6.2, sim.z + fz * 14);
+      const back = 36;
+      this.desired.set(sim.x - fx * back + rx * 5, y + 12, sim.z - fz * back + rz * 5);
+      this.look.set(sim.x + fx * 18, y + 4.6, sim.z + fz * 18);
     }
     const k = 1 - Math.exp(-3.1 * dt);
     this.camPos.lerp(this.desired, k);
@@ -442,6 +456,7 @@ export class HuntView {
           { y: 5.15, z0: -4.4, z1: 5.4, x: 3.35, h: 1.7, n: 7, rows: 5 },
           { y: 7.7, z0: -1.8, z1: 4.4, x: 2.35, h: 1.9, n: 5, rows: 4 },
           { y: 10.05, z0: 0.2, z1: 3.3, x: 1.45, h: 1.7, n: 3, rows: 3 },
+          { y: 12.4, z0: 0.5, z1: 2.4, x: 0.85, h: 1.4, n: 2, rows: 2 },
         ];
     let seed = kind === "player" ? 3 : town ? 11 : 7;
     const rnd = () => {
@@ -550,17 +565,18 @@ export class HuntView {
     }
     g.add(jawL, jawR);
 
-    const wheelGeo = new THREE.CylinderGeometry(2.45, 2.45, 1.45, 24);
+    const wheelGeo = new THREE.CylinderGeometry(town ? 0.72 : 0.95, town ? 0.72 : 0.95, 1.35, 16);
     wheelGeo.rotateZ(Math.PI / 2);
-    const hubGeo = new THREE.CylinderGeometry(0.72, 0.72, 1.55, 12);
-    hubGeo.rotateZ(Math.PI / 2);
     const wheels: THREE.Object3D[] = [];
-    const zs = town ? [-3.2, 3.6] : [-4.8, 0.1, 5.15];
-    for (const z of zs) {
-      for (const x of [-5.9, 5.9]) {
+    const span = town ? 8.4 : 12.8;
+    for (const x of [town ? -4.7 : -5.55, town ? 4.7 : 5.55]) {
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(1.55, town ? 1.15 : 1.45, span), dark);
+      belt.position.set(x, town ? 1.15 : 1.35, 0.15);
+      g.add(belt);
+      const rollers = town ? [-3.2, 3.4] : [-5.1, -1.7, 1.7, 5.2];
+      for (const z of rollers) {
         const w = new THREE.Mesh(wheelGeo, dark);
-        w.position.set(x, 2.45, z);
-        w.add(new THREE.Mesh(hubGeo, iron));
+        w.position.set(x, town ? 1.05 : 1.2, z);
         g.add(w);
         wheels.push(w);
       }
@@ -581,6 +597,7 @@ export class HuntView {
     }
 
     g.scale.setScalar(scale);
+    g.userData.baseScale = scale;
     g.userData.rig = { jawL, jawR, wheels, spin: 0 } satisfies CityRig;
     return g;
   }
