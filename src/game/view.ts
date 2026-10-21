@@ -51,6 +51,7 @@ export class HuntView {
   private palette = new Map<string, THREE.MeshStandardMaterial>();
   private _facade: THREE.CanvasTexture | null = null;
   private _tread: THREE.CanvasTexture | null = null;
+  private _photos = new Map<string, THREE.Texture>();
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -131,7 +132,7 @@ export class HuntView {
           vec3 ash = vec3(0.32, 0.28, 0.24);
           vec3 magma = vec3(0.45, 0.12, 0.05);
           float heat = uHeat;
-          vec3 col = mix(dust, scrub, clump * 0.38 * (1.0 - heat));
+          vec3 col = mix(dust, scrub, clump * 0.16 * (1.0 - heat));
           col = mix(col, clay, smoothstep(1.5, 6.0, vH) * 0.45);
           col = mix(col, ash, smoothstep(0.42, 0.78, heat));
           col = mix(col, magma, smoothstep(0.72, 1.0, heat));
@@ -316,8 +317,8 @@ export class HuntView {
     const rz = -Math.sin(sim.yaw);
     if (sim.mode === "menu" || sim.mode === "extract" || sim.mode === "down") {
       this.orbit += dt * 0.1;
-      this.desired.set(sim.x + Math.sin(this.orbit) * 36, y + 8, sim.z + Math.cos(this.orbit) * 36);
-      this.look.set(sim.x, y + 7.2, sim.z);
+      this.desired.set(sim.x + Math.sin(this.orbit) * 32, y + 6.2, sim.z + Math.cos(this.orbit) * 32);
+      this.look.set(sim.x, y + 6.4, sim.z);
     } else if (sim.mode === "trailer") {
       const t = sim.trailerT;
       if (t < 6) {
@@ -335,9 +336,9 @@ export class HuntView {
         this.look.set(sim.x, y + 8, sim.z);
       }
     } else {
-      const back = 34;
-      this.desired.set(sim.x - fx * back + rx * 11, y + 9, sim.z - fz * back + rz * 11);
-      this.look.set(sim.x + fx * 12, y + 6.8, sim.z + fz * 12);
+      const back = 26;
+      this.desired.set(sim.x - fx * back + rx * 9, y + 5.2, sim.z - fz * back + rz * 9);
+      this.look.set(sim.x + fx * 14, y + 6.2, sim.z + fz * 14);
     }
     const k = 1 - Math.exp(-3.1 * dt);
     this.camPos.lerp(this.desired, k);
@@ -369,14 +370,24 @@ export class HuntView {
     const rival = kind === "rival";
     const scale = rival ? 1.16 : town ? 0.68 : 1;
     const accentHex = kind === "player" ? 0xc6ef4a : town ? 0x7ec8c3 : 0xff5a3c;
-    const iron = this.mat("iron", 0x4a4038, { metalness: 0.62, roughness: 0.48 });
-    const rust = this.mat(rival ? "rust-r" : "rust", rival ? 0x7a332c : 0x8a4630, { metalness: 0.45, roughness: 0.58 });
-    const stone = this.mat("stone-" + kind, town ? 0xc2ad90 : rival ? 0x5c534c : 0x7a7168, {
-      metalness: 0.12,
-      roughness: 0.78,
-      map: this.facadeTex(),
+    const hullMap = this.photo("hull", "/tex/hull.jpg", 2, 3);
+    const faceMap = this.photo("facade", "/tex/facade.jpg");
+    const treadMap = this.photo("tread", "/tex/tread.jpg", 6, 1);
+    const iron = this.mat("iron", 0xffffff, { map: hullMap, metalness: 0.62, roughness: 0.58 });
+    const rust = this.mat(rival ? "rust-r" : "rust", rival ? 0xff8a72 : 0xd48962, {
+      map: hullMap,
+      metalness: 0.5,
+      roughness: 0.52,
     });
-    const dark = this.mat("tread", 0x1a1614, { metalness: 0.35, roughness: 0.72, map: this.treadTex() });
+    const stone = this.mat("stone-" + kind, 0xffffff, {
+      map: faceMap,
+      emissive: 0xffe6c2,
+      emissiveMap: faceMap,
+      emissiveIntensity: town ? 0.28 : 0.62,
+      metalness: 0.08,
+      roughness: 0.72,
+    });
+    const dark = this.mat("tread", 0xb5b5b5, { map: treadMap, metalness: 0.25, roughness: 0.78 });
     const glow = this.mat("glow-" + kind, accentHex, {
       emissive: accentHex,
       emissiveIntensity: 0.85,
@@ -426,11 +437,11 @@ export class HuntView {
     put(fireParts, new THREE.BoxGeometry(1.5, 0.24, 0.12), 2.3, 1.85, -6.2);
 
     const decks = town
-      ? [{ y: 4.55, z0: -1.6, z1: 3.8, x: 2.5, h: 0.85, n: 4 }]
+      ? [{ y: 5.05, z0: -2.2, z1: 4.2, x: 2.7, h: 1.15, n: 5, rows: 3 }]
       : [
-          { y: 4.65, z0: -3.1, z1: 4.8, x: 3.15, h: 1.15, n: 5 },
-          { y: 6.35, z0: -1.2, z1: 3.8, x: 2.25, h: 1.4, n: 4 },
-          { y: 8.0, z0: 0.3, z1: 2.8, x: 1.45, h: 1.55, n: 3 },
+          { y: 5.15, z0: -4.4, z1: 5.4, x: 3.35, h: 1.7, n: 7, rows: 5 },
+          { y: 7.7, z0: -1.8, z1: 4.4, x: 2.35, h: 1.9, n: 5, rows: 4 },
+          { y: 10.05, z0: 0.2, z1: 3.3, x: 1.45, h: 1.7, n: 3, rows: 3 },
         ];
     let seed = kind === "player" ? 3 : town ? 11 : 7;
     const rnd = () => {
@@ -439,18 +450,18 @@ export class HuntView {
     };
     for (const deck of decks) {
       put(bodyParts, new THREE.BoxGeometry(deck.x * 2 + 1.1, 0.28, deck.z1 - deck.z0 + 1.4), 0, deck.y - 0.1, (deck.z0 + deck.z1) / 2);
-      const rows = town ? 2 : 3;
+      const rows = deck.rows;
       for (let row = 0; row < rows; row++) {
         const z = deck.z0 + ((deck.z1 - deck.z0) * row) / Math.max(1, rows - 1);
-        const cols = Math.max(2, deck.n - row);
+        const cols = Math.max(2, deck.n - Math.floor(row / 2));
         for (let col = 0; col < cols; col++) {
-          const x = (col - (cols - 1) / 2) * ((deck.x * 1.85) / cols);
-          const bh = deck.h * (0.55 + rnd() * 0.95);
-          const bw = 0.78 + rnd() * 0.38;
-          const bd = 0.72 + rnd() * 0.3;
-          put(civicParts, new THREE.BoxGeometry(bw, bh, bd), x, deck.y + bh / 2, z);
-          if (rnd() > 0.58) put(civicParts, new THREE.ConeGeometry(bw * 0.46, 0.48, 4), x, deck.y + bh + 0.22, z);
-          if (rnd() > 0.4) put(glowParts, new THREE.BoxGeometry(bw * 0.62, 0.18, 0.08), x, deck.y + bh * 0.62, z - bd * 0.55);
+          const x = (col - (cols - 1) / 2) * ((deck.x * 1.7) / cols) + (rnd() - 0.5) * 0.28;
+          const bh = deck.h * (0.28 + rnd() * rnd() * 2.4);
+          const bw = 0.55 + rnd() * 0.55;
+          const bd = 0.5 + rnd() * 0.45;
+          const zz = z + (rnd() - 0.5) * 0.22;
+          put(civicParts, new THREE.BoxGeometry(bw, bh, bd), x, deck.y + bh / 2, zz, 1, 1, 1, (rnd() - 0.5) * 0.25);
+          if (rnd() > 0.82) put(bodyParts, new THREE.CylinderGeometry(0.04, 0.07, bh * 0.7, 5), x, deck.y + bh + 0.4, zz);
         }
       }
     }
@@ -464,12 +475,12 @@ export class HuntView {
       put(civicParts, new THREE.BoxGeometry(1.6, 1.5, 1.6), 0, 11.2, 1.35);
       put(fireParts, new THREE.BoxGeometry(1.8, 0.2, 0.12), 0, 8.4, 0.0);
     } else {
-      put(copperParts, new THREE.CylinderGeometry(1.2, 1.45, 1.15, 14), 0, 9.55, 1.25);
-      const dome = new THREE.SphereGeometry(1.35, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-      dome.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 9.95, 1.25));
+      put(copperParts, new THREE.CylinderGeometry(1.15, 1.4, 1.2, 16), 0, 12.15, 1.15);
+      const dome = new THREE.SphereGeometry(1.45, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2);
+      dome.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 12.65, 1.15));
       copperParts.push(dome);
-      put(glowParts, new THREE.CylinderGeometry(0.16, 0.28, 1.7, 8), 0, 11.7, 1.25);
-      put(glowParts, new THREE.SphereGeometry(0.3, 10, 8), 0, 12.65, 1.25);
+      put(glowParts, new THREE.CylinderGeometry(0.16, 0.26, 1.8, 8), 0, 14.3, 1.15);
+      put(glowParts, new THREE.SphereGeometry(0.32, 10, 8), 0, 15.3, 1.15);
     }
 
     const stacks: number[][] = town
@@ -490,9 +501,13 @@ export class HuntView {
         brace2.applyMatrix4(new THREE.Matrix4().makeRotationZ(side * -0.4));
         put(bodyParts, brace2, side * 2.8, 7.4, 2.2);
       }
+      for (const z of [-4.8, 0.1, 5.15]) {
+        for (const x of [-4.7, 4.7]) put(bodyParts, new THREE.BoxGeometry(1.8, 0.5, 2.6), x, 4.2, z);
+      }
     }
 
     const bake = (parts: THREE.BufferGeometry[], material: THREE.Material) => {
+      if (!parts.length) return;
       const merged = mergeGeometries(parts, false);
       parts.forEach((p) => p.dispose());
       if (!merged) return;
@@ -535,16 +550,16 @@ export class HuntView {
     }
     g.add(jawL, jawR);
 
-    const wheelGeo = new THREE.CylinderGeometry(2.05, 2.05, 1.25, 22);
+    const wheelGeo = new THREE.CylinderGeometry(2.45, 2.45, 1.45, 24);
     wheelGeo.rotateZ(Math.PI / 2);
-    const hubGeo = new THREE.CylinderGeometry(0.62, 0.62, 1.35, 12);
+    const hubGeo = new THREE.CylinderGeometry(0.72, 0.72, 1.55, 12);
     hubGeo.rotateZ(Math.PI / 2);
     const wheels: THREE.Object3D[] = [];
-    const zs = town ? [-3.1, 3.5] : [-4.7, 0.15, 5.2];
+    const zs = town ? [-3.2, 3.6] : [-4.8, 0.1, 5.15];
     for (const z of zs) {
-      for (const x of [-5.55, 5.55]) {
+      for (const x of [-5.9, 5.9]) {
         const w = new THREE.Mesh(wheelGeo, dark);
-        w.position.set(x, 2.05, z);
+        w.position.set(x, 2.45, z);
         w.add(new THREE.Mesh(hubGeo, iron));
         g.add(w);
         wheels.push(w);
@@ -622,6 +637,20 @@ export class HuntView {
       this.palette.set(key, m);
     }
     return m;
+  }
+
+  private photo(key: string, url: string, repeatX = 1, repeatY = 1) {
+    let tex = this._photos.get(key);
+    if (!tex) {
+      tex = new THREE.TextureLoader().load(url);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.anisotropy = 8;
+      tex.repeat.set(repeatX, repeatY);
+      this._photos.set(key, tex);
+    }
+    return tex;
   }
 
   private facadeTex() {
