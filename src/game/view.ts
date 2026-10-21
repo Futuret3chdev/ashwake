@@ -58,15 +58,15 @@ export class HuntView {
     this.renderer.setClearColor(0x0e1411, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.18;
+    this.renderer.toneMappingExposure = 1.42;
     this.camera = new THREE.PerspectiveCamera(48, 1, 0.4, 1600);
 
     this.fog = new THREE.FogExp2(0xc8bfa8, 0.0055);
     this.scene.fog = this.fog;
 
-    this.hemi = new THREE.HemisphereLight(0xd5d0c2, 0x6a5340, 1.05);
+    this.hemi = new THREE.HemisphereLight(0xd7ecff, 0x6a8a3a, 1.45);
     this.scene.add(this.hemi);
-    this.sun = new THREE.DirectionalLight(0xffe2b0, 1.85);
+    this.sun = new THREE.DirectionalLight(0xfff0d0, 2.35);
     this.sun.position.set(-90, 64, 36);
     this.scene.add(this.sun);
     const fill = new THREE.DirectionalLight(0x8ea4b8, 0.42);
@@ -112,40 +112,37 @@ export class HuntView {
       uniforms: { uHeat: { value: 0.12 }, uTime: { value: 0 }, uSun: { value: new THREE.Vector3(-0.55, 0.42, 0.22).normalize() } },
       vertexShader: `
         ${TERRAIN}
-        varying vec3 vPos; varying float vH;
+        varying vec3 vPos; varying vec3 vN; varying float vH;
         void main(){
           vec3 p = position;
           float h = ashHeight(p.xz);
+          float e = 3.0;
+          float hx = ashHeight(p.xz + vec2(e, 0.0));
+          float hz = ashHeight(p.xz + vec2(0.0, e));
           p.y += h;
           vPos = p; vH = h;
+          vN = normalize(vec3(h - hx, e, h - hz));
           gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
         }`,
       fragmentShader: `
         uniform float uHeat; uniform float uTime; uniform vec3 uSun;
-        varying vec3 vPos; varying float vH;
+        varying vec3 vPos; varying vec3 vN; varying float vH;
         void main(){
-          float n = sin(vPos.x * 0.11) * sin(vPos.z * 0.09);
-          float clump = smoothstep(-0.15, 0.75, sin(vPos.x * 0.017 + 1.7) * cos(vPos.z * 0.014));
-          vec3 dust = vec3(0.64, 0.50, 0.30);
-          vec3 scrub = vec3(0.36, 0.42, 0.18);
-          vec3 clay = vec3(0.48, 0.30, 0.16);
-          vec3 ash = vec3(0.32, 0.28, 0.24);
-          vec3 magma = vec3(0.45, 0.12, 0.05);
+          float n = sin(vPos.x * 0.07) * sin(vPos.z * 0.06);
+          float patch = sin(vPos.x * 0.021 + 2.0) * cos(vPos.z * 0.018);
+          vec3 grass = vec3(0.45, 0.68, 0.24);
+          vec3 lawn = vec3(0.62, 0.74, 0.28);
+          vec3 dirt = vec3(0.62, 0.46, 0.26);
+          vec3 ash = vec3(0.42, 0.36, 0.30);
+          vec3 magma = vec3(0.55, 0.16, 0.06);
           float heat = uHeat;
-          vec3 col = mix(dust, scrub, clump * 0.16 * (1.0 - heat));
-          col = mix(col, clay, smoothstep(1.5, 6.0, vH) * 0.45);
-          col = mix(col, ash, smoothstep(0.42, 0.78, heat));
-          col = mix(col, magma, smoothstep(0.72, 1.0, heat));
-          float rut = pow(abs(sin(vPos.x * 0.31 + sin(vPos.z * 0.012) * 3.0)), 26.0);
-          float rut2 = pow(abs(sin(vPos.z * 0.19 + vPos.x * 0.02)), 30.0);
-          col = mix(col, vec3(0.20, 0.14, 0.09), clamp(rut + rut2, 0.0, 1.0) * 0.72 * (1.0 - heat * 0.3));
-          float crack = smoothstep(0.88, 1.0, sin(vPos.x * 0.35) * sin(vPos.z * 0.31));
-          col = mix(col, vec3(1.0, 0.42, 0.08), crack * smoothstep(0.55, 1.0, heat));
-          vec3 dx = dFdx(vPos); vec3 dy = dFdy(vPos);
-          vec3 nor = normalize(cross(dx, dy));
-          float lit = clamp(dot(nor, uSun), 0.0, 1.0);
-          col *= 0.38 + lit * 0.95;
-          col += vec3(0.03, 0.025, 0.012) * n;
+          vec3 col = mix(grass, lawn, smoothstep(-0.2, 0.8, patch));
+          col = mix(col, dirt, smoothstep(4.0, 9.0, vH) * 0.55);
+          col = mix(col, ash, smoothstep(0.45, 0.8, heat));
+          col = mix(col, magma, smoothstep(0.75, 1.0, heat));
+          float lit = clamp(dot(normalize(vN), uSun), 0.0, 1.0);
+          col *= 0.62 + lit * 0.7;
+          col += vec3(0.02, 0.03, 0.01) * n * (1.0 - heat);
           gl_FragColor = vec4(col, 1.0);
         }`,
     });
@@ -233,7 +230,7 @@ export class HuntView {
     this.skyMat.uniforms.uTime!.value = this.clock;
     this.waterMat.uniforms.uTime!.value = this.clock;
     this.fog.color.copy(this.fogCool).lerp(this.fogHot, heat);
-    this.fog.density = 0.0042 + heat * 0.01 + (sim.inStorm ? 0.016 : 0);
+    this.fog.density = 0.0024 + heat * 0.008 + (sim.inStorm ? 0.014 : 0);
     this.hemi.color.setHex(heat < 0.55 ? 0xd8d2c4 : 0xc48a62);
     this.hemi.groundColor.setHex(heat < 0.55 ? 0x6a5340 : 0x3a2218);
     this.sun.intensity = 1.5 - heat * 0.55;
@@ -350,9 +347,9 @@ export class HuntView {
         this.look.set(sim.x, y + 8, sim.z);
       }
     } else {
-      const back = 36;
-      this.desired.set(sim.x - fx * back + rx * 5, y + 12, sim.z - fz * back + rz * 5);
-      this.look.set(sim.x + fx * 18, y + 4.6, sim.z + fz * 18);
+      const back = 30;
+      this.desired.set(sim.x - fx * back + rx * 12, y + 16, sim.z - fz * back + rz * 12);
+      this.look.set(sim.x + fx * 4, y + 4.2, sim.z + fz * 4);
     }
     const k = 1 - Math.exp(-3.1 * dt);
     this.camPos.lerp(this.desired, k);
@@ -382,39 +379,23 @@ export class HuntView {
     const g = new THREE.Group();
     const town = kind === "prey";
     const rival = kind === "rival";
-    const scale = rival ? 1.16 : town ? 0.68 : 1;
+    const scale = rival ? 1.16 : town ? 0.62 : 1;
     const accentHex = kind === "player" ? 0xc6ef4a : town ? 0x7ec8c3 : 0xff5a3c;
-    const hullMap = this.photo("hull", "/tex/hull.jpg", 2, 3);
-    const faceMap = this.photo("facade", "/tex/facade.jpg");
-    const treadMap = this.photo("tread", "/tex/tread.jpg", 6, 1);
-    const iron = this.mat("iron", 0xffffff, { map: hullMap, metalness: 0.62, roughness: 0.58 });
-    const rust = this.mat(rival ? "rust-r" : "rust", rival ? 0xff8a72 : 0xd48962, {
-      map: hullMap,
-      metalness: 0.5,
-      roughness: 0.52,
-    });
-    const stone = this.mat("stone-" + kind, 0xffffff, {
-      map: faceMap,
-      emissive: 0xffe6c2,
-      emissiveMap: faceMap,
-      emissiveIntensity: town ? 0.28 : 0.62,
-      metalness: 0.08,
-      roughness: 0.72,
-    });
-    const dark = this.mat("tread", 0xb5b5b5, { map: treadMap, metalness: 0.25, roughness: 0.78 });
-    const glow = this.mat("glow-" + kind, accentHex, {
-      emissive: accentHex,
-      emissiveIntensity: 0.85,
-      metalness: 0.15,
-      roughness: 0.35,
-    });
-    const furnace = this.mat("furnace", 0xff7a32, { emissive: 0xff6a22, emissiveIntensity: 1.15, roughness: 0.4 });
-    const copper = this.mat("copper", 0x6d8c76, { metalness: 0.7, roughness: 0.32 });
+    const wood = this.mat("wood-" + kind, town ? 0xd7b07a : 0xc4925a, { roughness: 0.82, metalness: 0.04 });
+    const stone = this.mat("keep-" + kind, town ? 0xf3e6c8 : rival ? 0xe7d3c4 : 0xf4ead4, { roughness: 0.72, metalness: 0.02 });
+    const roof = this.mat("roof-" + kind, town ? 0xd07a4a : rival ? 0xa33a32 : 0xc44732, { roughness: 0.66, metalness: 0.05 });
+    const track = this.mat("track-" + kind, 0x4a3b32, { roughness: 0.78, metalness: 0.18 });
+    const cleat = this.mat("cleat-" + kind, 0x6e5848, { roughness: 0.7, metalness: 0.22 });
+    const tooth = this.mat("tooth", 0xf7f1e4, { roughness: 0.45, metalness: 0.08 });
+    const lip = this.mat("lip-" + kind, rival ? 0x8d2e28 : 0xa34432, { roughness: 0.55, metalness: 0.12 });
+    const glow = this.mat("glow-" + kind, 0xffd27a, { emissive: 0xffc14a, emissiveIntensity: 0.9, roughness: 0.4 });
+    const accent = this.mat("accent-" + kind, accentHex, { emissive: accentHex, emissiveIntensity: 0.7, roughness: 0.4 });
 
-    const bodyParts: THREE.BufferGeometry[] = [];
-    const civicParts: THREE.BufferGeometry[] = [];
-    const glowParts: THREE.BufferGeometry[] = [];
-    const fireParts: THREE.BufferGeometry[] = [];
+    const hull: THREE.BufferGeometry[] = [];
+    const walls: THREE.BufferGeometry[] = [];
+    const roofs: THREE.BufferGeometry[] = [];
+    const lights: THREE.BufferGeometry[] = [];
+    const marks: THREE.BufferGeometry[] = [];
     const put = (
       list: THREE.BufferGeometry[],
       geo: THREE.BufferGeometry,
@@ -436,89 +417,44 @@ export class HuntView {
       list.push(geo);
     };
 
-    put(bodyParts, new THREE.BoxGeometry(8.8, 1.85, 14.8), 0, 2.15, 0.35);
-    put(bodyParts, new THREE.BoxGeometry(10.4, 0.7, 13.4), 0, 1.25, 0.15);
-    const prow = new THREE.BoxGeometry(7.4, 1.2, 3.6);
-    prow.applyMatrix4(new THREE.Matrix4().makeRotationX(0.46));
-    put(bodyParts, prow, 0, 1.85, -7.6);
-    put(bodyParts, new THREE.BoxGeometry(0.55, 1.45, 11.4), -4.85, 2.45, 0.1);
-    put(bodyParts, new THREE.BoxGeometry(0.55, 1.45, 11.4), 4.85, 2.45, 0.1);
-    put(bodyParts, new THREE.BoxGeometry(7.8, 1.55, 10.4), 0, 3.7, 0.7);
-    if (!town) put(bodyParts, new THREE.BoxGeometry(6.3, 1.2, 7.6), 0, 4.85, 1.15);
+    put(hull, new THREE.BoxGeometry(8.2, 1.15, 13.6), 0, 2.55, 0.2);
+    put(hull, new THREE.BoxGeometry(7.2, 0.35, 12.2), 0, 3.25, 0.35);
+    put(hull, new THREE.BoxGeometry(6.4, 0.28, 9.4), 0, 3.5, 0.8);
 
-    put(fireParts, new THREE.BoxGeometry(5.1, 0.32, 0.16), 0, 2.45, -6.95);
-    put(fireParts, new THREE.BoxGeometry(1.5, 0.24, 0.12), -2.3, 1.85, -6.2);
-    put(fireParts, new THREE.BoxGeometry(1.5, 0.24, 0.12), 2.3, 1.85, -6.2);
-
-    const decks = town
-      ? [{ y: 5.05, z0: -2.2, z1: 4.2, x: 2.7, h: 1.15, n: 5, rows: 3 }]
+    const houses: number[][] = town
+      ? [
+          [0, 0.4, 1.7, 1.35, 1.5],
+          [-1.7, 1.8, 1.15, 1.05, 1.05],
+          [1.6, 1.7, 1.1, 1.15, 1.0],
+        ]
       : [
-          { y: 5.15, z0: -4.4, z1: 5.4, x: 3.35, h: 1.7, n: 7, rows: 5 },
-          { y: 7.7, z0: -1.8, z1: 4.4, x: 2.35, h: 1.9, n: 5, rows: 4 },
-          { y: 10.05, z0: 0.2, z1: 3.3, x: 1.45, h: 1.7, n: 3, rows: 3 },
-          { y: 12.4, z0: 0.5, z1: 2.4, x: 0.85, h: 1.4, n: 2, rows: 2 },
+          [-2.15, -1.5, 1.7, 1.7, 1.45],
+          [2.05, -0.9, 1.55, 1.9, 1.35],
+          [-1.7, 1.35, 1.45, 1.55, 1.25],
+          [1.85, 1.7, 1.35, 1.65, 1.2],
+          [0.1, 3.55, 1.8, 1.45, 1.5],
+          [-2.35, 3.5, 1.2, 1.25, 1.1],
+          [2.4, 3.7, 1.15, 1.35, 1.05],
+          [0, -2.6, 1.5, 1.15, 1.2],
         ];
-    let seed = kind === "player" ? 3 : town ? 11 : 7;
-    const rnd = () => {
-      seed = (seed * 16807) % 2147483647;
-      return (seed & 65535) / 65535;
-    };
-    for (const deck of decks) {
-      put(bodyParts, new THREE.BoxGeometry(deck.x * 2 + 1.1, 0.28, deck.z1 - deck.z0 + 1.4), 0, deck.y - 0.1, (deck.z0 + deck.z1) / 2);
-      const rows = deck.rows;
-      for (let row = 0; row < rows; row++) {
-        const z = deck.z0 + ((deck.z1 - deck.z0) * row) / Math.max(1, rows - 1);
-        const cols = Math.max(2, deck.n - Math.floor(row / 2));
-        for (let col = 0; col < cols; col++) {
-          const x = (col - (cols - 1) / 2) * ((deck.x * 1.7) / cols) + (rnd() - 0.5) * 0.28;
-          const bh = deck.h * (0.28 + rnd() * rnd() * 2.4);
-          const bw = 0.55 + rnd() * 0.55;
-          const bd = 0.5 + rnd() * 0.45;
-          const zz = z + (rnd() - 0.5) * 0.22;
-          put(civicParts, new THREE.BoxGeometry(bw, bh, bd), x, deck.y + bh / 2, zz, 1, 1, 1, (rnd() - 0.5) * 0.25);
-          if (rnd() > 0.82) put(bodyParts, new THREE.CylinderGeometry(0.04, 0.07, bh * 0.7, 5), x, deck.y + bh + 0.4, zz);
-        }
-      }
+    for (const [x, z, w, h, d] of houses) {
+      const base = 3.62;
+      put(walls, new THREE.BoxGeometry(w!, h!, d!), x!, base + h! / 2, z!);
+      const cap = new THREE.ConeGeometry(Math.max(w!, d!) * 0.62, h! * 0.55, 4);
+      cap.rotateY(Math.PI / 4);
+      put(roofs, cap, x!, base + h! + h! * 0.22, z!);
+      put(lights, new THREE.BoxGeometry(w! * 0.22, h! * 0.22, 0.08), x! - w! * 0.18, base + h! * 0.55, z! - d! * 0.5 - 0.02);
+      put(lights, new THREE.BoxGeometry(w! * 0.22, h! * 0.22, 0.08), x! + w! * 0.18, base + h! * 0.55, z! - d! * 0.5 - 0.02);
     }
 
-    const copperParts: THREE.BufferGeometry[] = [];
-    if (town) {
-      put(civicParts, new THREE.BoxGeometry(1.4, 1.2, 1.4), 0, 6.5, 1.1);
-      put(glowParts, new THREE.BoxGeometry(0.8, 0.22, 0.08), 0, 6.7, 0.35);
-    } else if (rival) {
-      put(bodyParts, new THREE.BoxGeometry(2.6, 2.4, 2.6), 0, 9.5, 1.35);
-      put(civicParts, new THREE.BoxGeometry(1.6, 1.5, 1.6), 0, 11.2, 1.35);
-      put(fireParts, new THREE.BoxGeometry(1.8, 0.2, 0.12), 0, 8.4, 0.0);
-    } else {
-      put(copperParts, new THREE.CylinderGeometry(1.15, 1.4, 1.2, 16), 0, 12.15, 1.15);
-      const dome = new THREE.SphereGeometry(1.45, 20, 14, 0, Math.PI * 2, 0, Math.PI / 2);
-      dome.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 12.65, 1.15));
-      copperParts.push(dome);
-      put(glowParts, new THREE.CylinderGeometry(0.16, 0.26, 1.8, 8), 0, 14.3, 1.15);
-      put(glowParts, new THREE.SphereGeometry(0.32, 10, 8), 0, 15.3, 1.15);
-    }
-
-    const stacks: number[][] = town
-      ? [[0.7, 5.8, 3.3, 1.5]]
-      : rival
-        ? [[-1.35, 8.4, 3.7, 2.8], [1.25, 9.6, 4.2, 3.4], [0.1, 8.8, 2.3, 2.3]]
-        : [[-1.55, 8.6, 3.9, 2.5], [1.4, 9.8, 4.4, 3.2], [0.15, 8.0, 2.5, 1.9]];
-    for (const [x, y, z, h] of stacks) {
-      put(bodyParts, new THREE.CylinderGeometry(0.2, 0.34, h!, 8), x!, y!, z!);
-      put(fireParts, new THREE.CylinderGeometry(0.12, 0.12, 0.14, 6), x!, y! + h! * 0.52, z!);
-    }
     if (!town) {
-      for (const side of [-1, 1]) {
-        const brace = new THREE.BoxGeometry(0.14, 3.4, 0.14);
-        brace.applyMatrix4(new THREE.Matrix4().makeRotationZ(side * 0.55));
-        put(bodyParts, brace, side * 3.4, 6.2, -1.2);
-        const brace2 = new THREE.BoxGeometry(0.12, 2.6, 0.12);
-        brace2.applyMatrix4(new THREE.Matrix4().makeRotationZ(side * -0.4));
-        put(bodyParts, brace2, side * 2.8, 7.4, 2.2);
-      }
-      for (const z of [-4.8, 0.1, 5.15]) {
-        for (const x of [-4.7, 4.7]) put(bodyParts, new THREE.BoxGeometry(1.8, 0.5, 2.6), x, 4.2, z);
-      }
+      put(walls, new THREE.CylinderGeometry(1.15, 1.35, 2.4, 10), 0, 6.5, 0.6);
+      put(roofs, new THREE.ConeGeometry(1.7, 1.8, 10), 0, 8.4, 0.6);
+      put(marks, new THREE.BoxGeometry(0.7, 0.9, 0.08), 0, 6.4, -0.7);
+      put(hull, new THREE.CylinderGeometry(0.16, 0.22, 1.6, 6), -2.2, 6.6, 2.4);
+      put(hull, new THREE.CylinderGeometry(0.16, 0.22, 1.9, 6), 2.1, 6.8, 3.1);
+    } else {
+      put(roofs, new THREE.ConeGeometry(0.7, 0.9, 8), 0, 5.5, 0.4);
     }
 
     const bake = (parts: THREE.BufferGeometry[], material: THREE.Material) => {
@@ -528,73 +464,76 @@ export class HuntView {
       if (!merged) return;
       g.add(new THREE.Mesh(merged, material));
     };
-    bake(bodyParts, iron);
-    bake(civicParts, stone);
-    if (copperParts.length) bake(copperParts, copper);
-    bake(glowParts, glow);
-    bake(fireParts, furnace);
+    bake(hull, wood);
+    bake(walls, stone);
+    bake(roofs, roof);
+    bake(lights, glow);
+    bake(marks, accent);
 
+    const mouthY = town ? 2.15 : 2.35;
+    const mouthZ = town ? -6.15 : -6.7;
+    const mouthR = town ? 1.15 : 1.7;
+    const lipMesh = new THREE.Mesh(new THREE.TorusGeometry(mouthR, town ? 0.22 : 0.32, 8, 18), lip);
+    lipMesh.position.set(0, mouthY, mouthZ);
+    g.add(lipMesh);
     const throat = new THREE.Mesh(
-      new THREE.BoxGeometry(town ? 2.6 : 3.8, 1.55, 1.4),
-      this.mat("throat", 0x0c0a09, { roughness: 1, metalness: 0.05 }),
+      new THREE.CircleGeometry(mouthR * 0.82, 16),
+      this.mat("throat", 0x1a1210, { roughness: 1, side: THREE.DoubleSide }),
     );
-    throat.position.set(0, 2.2, -6.55);
+    throat.position.set(0, mouthY, mouthZ + 0.05);
     g.add(throat);
 
     const jawL = new THREE.Group();
     const jawR = new THREE.Group();
-    jawL.position.set(0, 2.95, -6.85);
-    jawR.position.set(0, 1.5, -6.85);
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(town ? 4.8 : 7.4, 0.55, 4.2), rust);
-    upper.position.set(0, 0.2, -1.9);
-    jawL.add(upper);
-    const lower = new THREE.Mesh(new THREE.BoxGeometry(town ? 5 : 7.2, 0.62, 4.4), rust);
-    lower.position.set(0, -0.16, -2.0);
-    jawR.add(lower);
-    const toothGeo = new THREE.ConeGeometry(0.13, 0.46, 4);
-    const teeth = town ? 5 : 7;
-    for (let i = 0; i < teeth; i++) {
-      const x = (i - (teeth - 1) / 2) * (town ? 0.72 : 0.82);
-      const t1 = new THREE.Mesh(toothGeo, rust);
-      t1.position.set(x, -0.12, -2.7);
-      t1.rotation.x = Math.PI;
-      jawL.add(t1);
-      const t2 = new THREE.Mesh(toothGeo, rust);
-      t2.position.set(x, 0.2, -2.8);
-      jawR.add(t2);
+    jawL.position.set(0, mouthY, mouthZ);
+    jawR.position.set(0, mouthY, mouthZ);
+    const toothGeo = new THREE.ConeGeometry(town ? 0.12 : 0.16, town ? 0.42 : 0.58, 5);
+    const count = town ? 5 : 7;
+    for (let i = 0; i < count; i++) {
+      const a = -0.7 + (1.4 * i) / (count - 1);
+      const upper = new THREE.Mesh(toothGeo, tooth);
+      upper.position.set(Math.sin(a) * mouthR * 0.92, Math.cos(a) * mouthR * 0.55 + 0.15, -0.15);
+      upper.rotation.z = -a;
+      upper.rotation.x = Math.PI;
+      jawL.add(upper);
+      const lower = new THREE.Mesh(toothGeo, tooth);
+      lower.position.set(Math.sin(a) * mouthR * 0.92, -Math.cos(a) * mouthR * 0.45 - 0.05, -0.15);
+      lower.rotation.z = a;
+      jawR.add(lower);
     }
     g.add(jawL, jawR);
 
-    const wheelGeo = new THREE.CylinderGeometry(town ? 0.72 : 0.95, town ? 0.72 : 0.95, 1.35, 16);
+    const wheelGeo = new THREE.CylinderGeometry(town ? 0.55 : 0.72, town ? 0.55 : 0.72, 1.15, 14);
     wheelGeo.rotateZ(Math.PI / 2);
     const wheels: THREE.Object3D[] = [];
-    const span = town ? 8.4 : 12.8;
-    for (const x of [town ? -4.7 : -5.55, town ? 4.7 : 5.55]) {
-      const belt = new THREE.Mesh(new THREE.BoxGeometry(1.55, town ? 1.15 : 1.45, span), dark);
-      belt.position.set(x, town ? 1.15 : 1.35, 0.15);
+    const span = town ? 8.2 : 12.4;
+    const cleatParts: THREE.BufferGeometry[] = [];
+    for (const x of [town ? -4.35 : -5.15, town ? 4.35 : 5.15]) {
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(1.35, town ? 1.55 : 1.85, span), track);
+      belt.position.set(x, town ? 1.15 : 1.25, 0.15);
       g.add(belt);
-      const rollers = town ? [-3.2, 3.4] : [-5.1, -1.7, 1.7, 5.2];
+      const nCleat = town ? 8 : 11;
+      for (let i = 0; i < nCleat; i++) {
+        const z = -span / 2 + 0.4 + (i * (span - 0.6)) / (nCleat - 1);
+        put(cleatParts, new THREE.BoxGeometry(1.7, 0.22, 0.42), x, 0.32, z);
+      }
+      const rollers = town ? [-2.8, 2.8] : [-4.6, -1.5, 1.6, 4.7];
       for (const z of rollers) {
-        const w = new THREE.Mesh(wheelGeo, dark);
-        w.position.set(x, town ? 1.05 : 1.2, z);
+        const w = new THREE.Mesh(wheelGeo, track);
+        w.position.set(x, town ? 1.05 : 1.15, z);
         g.add(w);
         wheels.push(w);
       }
     }
+    bake(cleatParts, cleat);
 
     const shade = new THREE.Mesh(
-      new THREE.CircleGeometry(town ? 5.2 : 7.4, 24),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false }),
+      new THREE.CircleGeometry(town ? 4.6 : 6.6, 24),
+      new THREE.MeshBasicMaterial({ color: 0x1c2414, transparent: true, opacity: 0.22, depthWrite: false }),
     );
     shade.rotation.x = -Math.PI / 2;
-    shade.position.y = 0.06;
+    shade.position.y = 0.05;
     g.add(shade);
-
-    if (!town) {
-      const light = new THREE.PointLight(accentHex, kind === "player" ? 5 : 3, 26, 2);
-      light.position.set(0, 7.5, -2);
-      g.add(light);
-    }
 
     g.scale.setScalar(scale);
     g.userData.baseScale = scale;
@@ -720,9 +659,9 @@ export class HuntView {
   private makeForest() {
     const count = 260;
     const trunkGeo = new THREE.CylinderGeometry(0.18, 0.28, 1.6, 5);
-    const crownGeo = new THREE.ConeGeometry(1.15, 3.2, 6);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.9 });
-    const crownMat = new THREE.MeshStandardMaterial({ color: 0x3f7a3a, roughness: 0.8, vertexColors: false });
+    const crownGeo = new THREE.IcosahedronGeometry(1.35, 1);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4e32, roughness: 0.9 });
+    const crownMat = new THREE.MeshStandardMaterial({ color: 0x3f9a3a, roughness: 0.75 });
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
     const crowns = new THREE.InstancedMesh(crownGeo, crownMat, count);
     crowns.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
@@ -743,10 +682,10 @@ export class HuntView {
       dummy.rotation.set(0, Math.random() * 6, 0);
       dummy.updateMatrix();
       trunks.setMatrixAt(n, dummy.matrix);
-      dummy.position.y = y + 2.3 * s;
+      dummy.position.y = y + 2.05 * s;
       dummy.updateMatrix();
       crowns.setMatrixAt(n, dummy.matrix);
-      color.setHex(0x4d6a32).offsetHSL((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.08);
+      color.setHex(0x3e9a34).offsetHSL((Math.random() - 0.5) * 0.06, 0.05, (Math.random() - 0.5) * 0.08);
       crowns.setColorAt(n, color);
       n += 1;
     }
@@ -764,7 +703,7 @@ export class HuntView {
     const attr = this.crowns.instanceColor;
     if (!attr) return;
     for (let i = 0; i < this.crowns.count; i++) {
-      if (heat < 0.35) color.setHex(0x4d6a32);
+      if (heat < 0.35) color.setHex(0x3e9a34);
       else if (heat < 0.62) color.setHex(0x8a7a3a);
       else if (heat < 0.82) color.setHex(0x6a5644);
       else color.setHex(0x3a2a24);
