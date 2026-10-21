@@ -28,6 +28,7 @@ export function HuntApp() {
   const [save, setSave] = useState<Save>(defaultSave);
   const [result, setResult] = useState<RunResult | null>(null);
   const [muted, setMuted] = useState(false);
+  const [film, setFilm] = useState(false);
   const hullRef = useRef<HTMLSpanElement>(null);
   const fuelRef = useRef<HTMLSpanElement>(null);
   const heatRef = useRef<HTMLSpanElement>(null);
@@ -178,15 +179,7 @@ export function HuntApp() {
   }
 
   function onTrailer() {
-    const sim = simRef.current;
-    if (!sim) {
-      pending.current = "trailer";
-      return;
-    }
-    audioRef.current?.unlock();
-    sim.startTrailer();
-    setMode("trailer");
-    setPanel(null);
+    setFilm(true);
   }
 
   function toggleMute() {
@@ -326,7 +319,7 @@ export function HuntApp() {
                   <Play size={18} /> Start hunt
                 </button>
                 <button className="btn" type="button" onClick={onTrailer}>
-                  <Clapperboard size={18} /> Play trailer
+                  <Clapperboard size={18} /> Watch trailer
                 </button>
                 <button className="btn" type="button" onClick={() => setPanel("dock")}>
                   <Warehouse size={18} /> The Stack
@@ -340,6 +333,15 @@ export function HuntApp() {
               </div>
               <p className="fine">Mobile: stick to steer, buttons for jaw, overdrive, aegis, mercy. Nature shifts as your heat rises. Dock to bank t3x.</p>
             </section>
+          </div>
+        )}
+
+        {film && (
+          <div className="film" role="dialog" aria-label="ASHWAKE trailer">
+            <video src="/trailer.mp4" controls autoPlay playsInline />
+            <button className="btn" type="button" onClick={() => setFilm(false)}>
+              Close
+            </button>
           </div>
         )}
 
